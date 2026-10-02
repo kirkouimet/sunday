@@ -1,4 +1,5 @@
 import CoreData
+import SundayKit
 
 // The Core Data model is defined in code so it lives in plain, reviewable Swift.
 // CloudKit rules apply: every attribute is optional or defaulted, every
@@ -29,6 +30,12 @@ final class Meal: NSManagedObject, Identifiable {
     @NSManaged var story: String?
     @NSManaged var storyAudio: Data?
     @NSManaged var storyBy: String?
+    /// Sunday Live: when someone tapped "We're sitting down", who did, and
+    /// when the evening was wrapped up. Live dinners take check-ins and
+    /// everyone's photos.
+    @NSManaged var liveAt: Date?
+    @NSManaged var liveBy: String?
+    @NSManaged var liveEndedAt: Date?
     @NSManaged var createdAt: Date?
     @NSManaged var photos: NSSet?
 
@@ -36,6 +43,8 @@ final class Meal: NSManagedObject, Identifiable {
         let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Untitled dinner" : trimmed
     }
+
+    var isLive: Bool { LiveDinner.isLive(startedAt: liveAt, endedAt: liveEndedAt) }
 
     var sortedPhotos: [Photo] {
         (photos as? Set<Photo> ?? []).sorted {
@@ -130,6 +139,9 @@ enum SundayModel {
             attribute("story", .stringAttributeType),
             attribute("storyAudio", .binaryDataAttributeType, externalStorage: true),
             attribute("storyBy", .stringAttributeType),
+            attribute("liveAt", .dateAttributeType),
+            attribute("liveBy", .stringAttributeType),
+            attribute("liveEndedAt", .dateAttributeType),
             attribute("createdAt", .dateAttributeType),
             mealPhotos,
         ])

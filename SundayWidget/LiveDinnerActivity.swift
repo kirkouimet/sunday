@@ -1,0 +1,159 @@
+import ActivityKit
+import AppIntents
+import SundayKit
+import SwiftUI
+import WidgetKit
+
+private let liveAccent = Color(red: 0.851, green: 0.392, blue: 0.212)
+
+/// Sunday Live on the Lock Screen and in the Dynamic Island: the dish, the
+/// cook, the faces at the table, "I'm here" without opening the app, and a
+/// tap anywhere opens the camera to add your photo.
+struct LiveDinnerActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: LiveDinnerAttributes.self) { context in
+            LiveDinnerLockScreen(context: context)
+                .activityBackgroundTint(Color.black.opacity(0.75))
+                .activitySystemActionForegroundColor(.white)
+                .widgetURL(DeepLink.snap)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("SUNDAY DINNER")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(liveAccent)
+                        Text(context.state.dish)
+                            .font(.headline)
+                            .lineLimit(1)
+                    }
+                    .padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Faces(people: context.state.people, size: 24, limit: 4)
+                        .padding(.trailing, 4)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    HStack {
+                        Text(LiveDinner.status(cook: context.state.cook, people: context.state.people.count,
+                                               photos: context.state.photoCount))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer()
+                        CheckInButton(mealID: context.attributes.mealID, isCheckedIn: context.state.isMeCheckedIn)
+                    }
+                }
+            } compactLeading: {
+                Image(systemName: "fork.knife")
+                    .foregroundStyle(liveAccent)
+            } compactTrailing: {
+                Label("\(context.state.people.count)", systemImage: "person.fill")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(liveAccent)
+            } minimal: {
+                Image(systemName: "fork.knife")
+                    .foregroundStyle(liveAccent)
+            }
+            .widgetURL(DeepLink.snap)
+            .keylineTint(liveAccent)
+        }
+    }
+}
+
+private struct LiveDinnerLockScreen: View {
+    let context: ActivityViewContext<LiveDinnerAttributes>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Circle().fill(Color.red).frame(width: 7, height: 7)
+                Text("SUNDAY DINNER")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(liveAccent)
+                Spacer()
+                Text(context.attributes.startedAt, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .multilineTextAlignment(.trailing)
+            }
+            Text(context.state.dish)
+                .font(.system(.title3, design: .serif).weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Faces(people: context.state.people, size: 26, limit: 6)
+                    Text(LiveDinner.status(cook: context.state.cook, people: context.state.people.count,
+                                           photos: context.state.photoCount))
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(1)
+                }
+                Spacer()
+                CheckInButton(mealID: context.attributes.mealID, isCheckedIn: context.state.isMeCheckedIn)
+            }
+        }
+        .padding(16)
+    }
+}
+
+private struct CheckInButton: View {
+    let mealID: String
+    let isCheckedIn: Bool
+
+    var body: some View {
+        if isCheckedIn {
+            Label("At the table", systemImage: "checkmark.circle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(liveAccent)
+        } else if let id = UUID(uuidString: mealID) {
+            Button(intent: CheckInIntent(mealID: id)) {
+                Label(PendingCheckIns.contains(id) ? "Checked in" : "I'm here", systemImage: "hand.wave.fill")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(liveAccent)
+        }
+    }
+}
+
+/// Initial circles, overlapping, like the app's avatars.
+private struct Faces: View {
+    let people: [String]
+    let size: CGFloat
+    let limit: Int
+
+    private static let palette: [Color] = [
+        Color(red: 0.25, green: 0.55, blue: 0.55), Color(red: 0.62, green: 0.40, blue: 0.62),
+        Color(red: 0.33, green: 0.55, blue: 0.40), Color(red: 0.40, green: 0.45, blue: 0.70),
+        Color(red: 0.75, green: 0.42, blue: 0.55), Color(red: 0.80, green: 0.50, blue: 0.25),
+    ]
+
+    var body: some View {
+        HStack(spacing: -size * 0.25) {
+            ForEach(Array(people.prefix(limit).enumerated()), id: \.offset) { _, person in
+                Text(String(person.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.45, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: size, height: size)
+                    .background(Self.color(for: person), in: Circle())
+                    .overlay(Circle().strokeBorder(.black.opacity(0.4), lineWidth: 1.5))
+            }
+            if people.count > limit {
+                Text("+\(people.count - limit)")
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .padding(.leading, size * 0.35)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(people.isEmpty ? "No one checked in yet" : "At the table: \(people.joined(separator: ", "))")
+    }
+
+    private static func color(for name: String) -> Color {
+        let sum = name.lowercased().unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        return palette[sum % palette.count]
+    }
+}

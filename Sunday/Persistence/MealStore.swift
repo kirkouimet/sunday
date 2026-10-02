@@ -199,6 +199,7 @@ final class MealStore: ObservableObject {
             let objectID = meal.objectID
             Task { await addToFamilyShare(objectID) }
         }
+        if meal.isLive { LiveDinners.sync(store: self) }
         return meal
     }
 
@@ -250,6 +251,74 @@ final class MealStore: ObservableObject {
         guard !meal.isGone else { return }
         meal.cook = cook
         saveQuietly()
+    }
+
+    // MARK: Sunday Live
+
+    static let myNameKey = "myName"
+
+    /// Who this phone belongs to at the table: chosen once ("Which one are
+    /// you?"), else your name from the family share.
+    var myName: String? {
+        if let stored = UserDefaults.standard.string(forKey: Self.myNameKey), !stored.isEmpty { return stored }
+        guard let components = share?.currentUserParticipant?.userIdentity.nameComponents else { return nil }
+        let name = components.formatted(.name(style: .short))
+        return name.isEmpty ? nil : name
+    }
+
+    func setMyName(_ name: String) {
+        UserDefaults.standard.set(name.trimmingCharacters(in: .whitespaces), forKey: Self.myNameKey)
+        objectWillChange.send()
+    }
+
+    /// The dinner happening right now, if someone started it.
+    func liveMeal() -> Meal? {
+        let request = NSFetchRequest<Meal>(entityName: "Meal")
+        request.predicate = NSPredicate(format: "liveAt != nil AND liveEndedAt == nil")
+        return ((try? context.fetch(request)) ?? []).filter(\.isLive)
+            .max { ($0.liveAt ?? .distantPast) < ($1.liveAt ?? .distantPast) }
+    }
+
+    /// "We're sitting down": the dinner goes live for the whole family.
+    func startLive(_ meal: Meal) {
+        guard !meal.isGone else { return }
+        meal.liveAt = .now
+        meal.liveEndedAt = nil
+        meal.liveBy = myName
+        if let me = myName { meal.attendees = LiveDinner.checkIn(me, to: meal.attendees) }
+        saveQuietly()
+        FamilyNotifier.markLiveKnown(meal.id)
+        LiveDinners.sync(store: self)
+    }
+
+    /// "I'm here": you're at the table.
+    func checkIn(_ meal: Meal, as name: String? = nil) {
+        guard !meal.isGone, let name = name ?? myName else { return }
+        meal.attendees = LiveDinner.checkIn(name, to: meal.attendees)
+        saveQuietly()
+        LiveDinners.sync(store: self)
+    }
+
+    func isCheckedIn(_ meal: Meal) -> Bool {
+        guard let me = myName else { return false }
+        return Attendance.decode(meal.attendees).contains { $0.caseInsensitiveCompare(me) == .orderedSame }
+    }
+
+    /// "That's dinner": the evening is over; rating takes it from here.
+    func endLive(_ meal: Meal) {
+        guard !meal.isGone else { return }
+        meal.liveEndedAt = .now
+        saveQuietly()
+        LiveDinners.sync(store: self)
+    }
+
+    /// Check-ins tapped on a Live Activity or notification.
+    func applyPendingCheckIns() {
+        guard !PersistenceController.isUITesting, myName != nil else { return }
+        PendingCheckIns.drain { entry in
+            guard let meal = meal(withID: entry.mealID) else { return }
+            checkIn(meal)
+        }
     }
 
     /// Plan a dinner for this Sunday (or today, if it's Sunday): a dinner
@@ -608,7 +677,11 @@ final class MealStore: ObservableObject {
                         self.startSharedImportFallback()
                     }
                 }
-                if self.persistence.isCloudBacked { FamilyNotifier.checkForNewDinners(store: self) }
+                if self.persistence.isCloudBacked {
+                    FamilyNotifier.checkForNewDinners(store: self)
+                    FamilyNotifier.checkForLiveDinner(store: self)
+                }
+                LiveDinners.sync(store: self)
                 self.reconcile()
             }
         })

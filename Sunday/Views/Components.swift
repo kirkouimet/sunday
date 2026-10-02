@@ -4,9 +4,17 @@ import UIKit
 
 extension Hemisphere {
     static let storageKey = "hemisphere"
+    private static let southernRegions: Set<String> = [
+        "AU", "NZ", "AR", "CL", "UY", "PY", "BR", "BO", "PE", "ZA", "NA", "BW", "LS", "SZ", "MZ", "ZW",
+        "MG", "MU", "FJ", "PG", "ID", "TZ", "MW", "ZM", "AO",
+    ]
 
     static var current: Hemisphere {
-        UserDefaults.standard.string(forKey: storageKey).flatMap(Hemisphere.init(rawValue:)) ?? .northern
+        if let stored = UserDefaults.standard.string(forKey: storageKey).flatMap(Hemisphere.init(rawValue:)) {
+            return stored
+        }
+        // No setting to fiddle with: the region knows which way the seasons run.
+        return southernRegions.contains(Locale.current.region?.identifier ?? "") ? .southern : .northern
     }
 }
 

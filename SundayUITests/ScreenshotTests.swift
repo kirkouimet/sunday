@@ -89,6 +89,19 @@ final class ScreenshotTests: XCTestCase {
 
         tapTab(app, "Family")
         snap("8-family", variant)
+
+        // Sunday Live: relaunch with a dinner in progress.
+        app.terminate()
+        let live = XCUIApplication()
+        live.launchArguments = ["-uiTesting", "-uiLive"] + arguments
+        live.launch()
+        if live.staticTexts["Live · Sunday dinner"].firstMatch.waitForExistence(timeout: 15) {
+            sleep(1)
+            snap("9-live", variant)
+        } else {
+            snap("9-live-missing", variant)
+            XCTFail("No live dinner card")
+        }
     }
 
     private func tapTab(_ app: XCUIApplication, _ name: String) {

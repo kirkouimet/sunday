@@ -6,6 +6,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
+        FamilyNotifier.registerCategories()
+        // "I'm here" from a Live Activity or notification, applied right away.
+        CheckInIntent.onCheckIn = { MealStore.shared.applyPendingCheckIns() }
         // Silent pushes let CloudKit sync (and us notice new family dinners)
         // in the background.
         application.registerForRemoteNotifications()

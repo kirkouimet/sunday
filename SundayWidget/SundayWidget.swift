@@ -276,5 +276,6 @@ struct SundayWidget: Widget {
 struct SundayWidgetBundle: WidgetBundle {
     var body: some Widget {
         SundayWidget()
+        LiveDinnerActivity()
     }
 }

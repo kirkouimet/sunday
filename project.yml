@@ -19,6 +19,7 @@ targets:
     platform: iOS
     sources:
       - path: Sunday
+      - path: Shared
     dependencies:
       - package: SundayKit
       - target: SundayWidget
@@ -42,6 +43,7 @@ targets:
             CFBundleURLSchemes:
               - sunday
         ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
         NSCameraUsageDescription: Sunday uses the camera to take pictures of family dinners.
         NSMicrophoneUsageDescription: Sunday records the cook telling how they make a family recipe.
         NSSpeechRecognitionUsageDescription: Sunday turns recorded recipes into text on your iPhone so you can read and search them.
@@ -70,6 +72,7 @@ targets:
     platform: iOS
     sources:
       - path: SundayWidget
+      - path: Shared
     dependencies:
       - package: SundayKit
     entitlements:

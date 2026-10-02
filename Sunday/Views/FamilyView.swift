@@ -10,7 +10,6 @@ struct FamilyView: View {
     @AppStorage(FamilyNotifier.enabledKey) private var familyPostAlerts = true
     @AppStorage(Reminders.hourKey) private var reminderHour = 17
     @AppStorage(Reminders.minuteKey) private var reminderMinute = 30
-    @AppStorage(Hemisphere.storageKey) private var hemisphere: Hemisphere = .northern
 
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Meal.date, ascending: false)])
     private var meals: FetchedResults<Meal>
@@ -29,6 +28,8 @@ struct FamilyView: View {
                 if !meals.isEmpty {
                     statsHero
                 }
+                // The year's book is an event, not a setting.
+                SundayBookSection(meals: history)
                 // A family of one: the invite is the most important thing here.
                 if store.role == .solo {
                     familySection
@@ -36,19 +37,11 @@ struct FamilyView: View {
                 if !meals.isEmpty {
                     funStats
                 }
-                SundayBookSection(meals: history)
                 accountWarning
                 if store.role != .solo {
                     familySection
                 }
                 remindersSection
-
-                Section("Seasons") {
-                    Picker("Hemisphere", selection: $hemisphere) {
-                        Text("Northern").tag(Hemisphere.northern)
-                        Text("Southern").tag(Hemisphere.southern)
-                    }
-                }
 
                 Section {
                 } footer: {
@@ -148,16 +141,16 @@ struct FamilyView: View {
         .accessibilityLabel("Family: \(members.joined(separator: ", "))")
     }
 
-    /// Little superlatives that make this tab a keepsake, not settings.
+    /// Who's been at the table most. Only when it says something: if
+    /// everyone's been at every dinner, the big number already said it.
     @ViewBuilder
     private var funStats: some View {
-        let first = history.last
         let attendance = Attendance.counts(in: history.compactMap { m -> Attendance.Dinner? in
             guard let id = m.id, let date = m.date else { return nil }
             return Attendance.Dinner(id: id, date: date, people: Attendance.decode(m.attendees))
         })
-        Section {
-            if !attendance.isEmpty {
+        if attendance.count > 1, Set(attendance.map(\.count)).count > 1 {
+            Section {
                 NavigationLink {
                     SundaysWithView(counts: attendance)
                 } label: {
@@ -171,23 +164,6 @@ struct FamilyView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Sundays with").font(.subheadline.weight(.semibold))
                             Text(attendance.prefix(3).map { "\($0.name) \($0.count)" }.joined(separator: " · "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            if let first, let date = first.date {
-                NavigationLink {
-                    MealDetailView(meal: first)
-                } label: {
-                    HStack(spacing: 12) {
-                        PhotoThumbnail(photo: first.sortedPhotos.first)
-                            .frame(width: 44, height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Where it started").font(.subheadline.weight(.semibold))
-                            Text("\(first.displayName), \(date.formatted(.dateTime.month(.abbreviated).day().year()))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

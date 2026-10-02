@@ -4,7 +4,8 @@ import SwiftUI
 /// Records and plays the cook telling a recipe in their own words.
 @MainActor
 final class VoiceMemo: NSObject, ObservableObject, AVAudioPlayerDelegate {
-    static let maxDuration: TimeInterval = 90
+    /// Long enough for Grandma to finish the story.
+    static let maxDuration: TimeInterval = 10 * 60
 
     @Published private(set) var isRecording = false
     @Published private(set) var isPlaying = false

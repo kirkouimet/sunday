@@ -80,7 +80,36 @@ enum PreviewData {
                 rating.updatedAt = date
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("-uiLive") {
+            addLiveDinner(context)
+        }
         try? context.save()
+    }
+
+    /// Sunday Live in progress, for screenshots: Dad's chili, two photos so
+    /// far, and this phone (Grandma June's) not checked in yet.
+    private static func addLiveDinner(_ context: NSManagedObjectContext) {
+        let started = Date.now.addingTimeInterval(-25 * 60)
+        let meal = Meal(context: context)
+        meal.id = UUID()
+        meal.name = "Chili"
+        meal.date = started
+        meal.createdAt = started
+        meal.cook = "Dad"
+        meal.attendees = Attendance.encode(["Dad", "Mom", "Ellie"])
+        meal.liveAt = started
+        meal.liveBy = "Dad"
+        for index in 0..<2 {
+            let photo = Photo(context: context)
+            photo.id = UUID()
+            photo.createdAt = started
+            photo.sortIndex = Int16(index)
+            photo.imageData = illustration(symbol: "flame.fill", colors: (.systemRed, .brown), variant: index)
+                .jpegData(compressionQuality: 0.8)
+            photo.thumbnailData = photo.imageData
+            photo.meal = meal
+        }
+        UserDefaults.standard.set("Grandma June", forKey: "myName")
     }
 
     private static func illustration(symbol: String, colors: (UIColor, UIColor), variant: Int) -> UIImage {

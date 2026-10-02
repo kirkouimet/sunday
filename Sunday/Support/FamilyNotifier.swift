@@ -94,12 +94,71 @@ enum FamilyNotifier {
         try? await UNUserNotificationCenter.current().add(request)
     }
 
+    // MARK: Sunday Live
+
+    private static let knownLiveKey = "knownLiveMealIDs"
+
+    /// "I'm here" and "Snap a photo", right on the notification.
+    static func registerCategories() {
+        let checkIn = UNNotificationAction(identifier: LiveNotification.checkInAction, title: "I'm here", options: [])
+        let snap = UNNotificationAction(identifier: LiveNotification.snapAction, title: "Snap a photo", options: [.foreground],
+                                        icon: UNNotificationActionIcon(systemImageName: "camera.fill"))
+        let live = UNNotificationCategory(identifier: LiveNotification.categoryID, actions: [checkIn, snap], intentIdentifiers: [])
+        UNUserNotificationCenter.current().setNotificationCategories([live])
+    }
+
+    private static var knownLive: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: knownLiveKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue.suffix(50)), forKey: knownLiveKey) }
+    }
+
+    static func markLiveKnown(_ id: UUID?) {
+        guard let id else { return }
+        knownLive.insert(id.uuidString)
+    }
+
+    /// Someone else just sat down to dinner: "Mom's cooking Chili. At the
+    /// table?" CloudKit can't push a Live Activity to the family without a
+    /// server, so the import's silent push becomes a local alert instead,
+    /// and the Live Activity starts when you open the app.
+    static func checkForLiveDinner(store: MealStore) {
+        guard isEnabled, store.role != .solo, let meal = store.liveMeal(), let id = meal.id,
+              !knownLive.contains(id.uuidString)
+        else { return }
+        knownLive.insert(id.uuidString)
+        // Only fresh news: a dinner that started a while ago isn't an invite.
+        guard Date.now.timeIntervalSince(meal.liveAt ?? .distantPast) < 2 * 3600, !store.isCheckedIn(meal) else { return }
+        Task { await postLive(meal, id: id) }
+    }
+
+    private static func postLive(_ meal: Meal, id: UUID) async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "🍽️ Sunday dinner is on"
+        let who = meal.cook.flatMap { $0.isEmpty ? nil : $0 } ?? meal.liveBy
+        content.body = who.map { "\($0)'s cooking \(meal.displayName). At the table?" } ?? "\(meal.displayName). At the table?"
+        content.sound = .default
+        content.categoryIdentifier = LiveNotification.categoryID
+        content.threadIdentifier = LiveNotification.categoryID
+        content.userInfo = ["mealID": id.uuidString]
+        let request = UNNotificationRequest(identifier: "live-\(id.uuidString)", content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
     /// Notification attachments must be files; the system moves them away.
     private static func writeAttachment(_ data: Data, id: UUID) throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("dinner-\(id.uuidString).jpg")
         try data.write(to: url, options: .atomic)
         return url
     }
+}
+
+/// Identifiers for the "dinner is on" notification and its buttons.
+enum LiveNotification {
+    static let categoryID = "live-dinner"
+    static let checkInAction = "check-in"
+    static let snapAction = "snap"
 }
 
 /// Opens the dinner when a notification is tapped, and shows banners while
@@ -114,6 +173,19 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse) async {
+        let info = response.notification.request.content.userInfo
+        if let mealID = (info["mealID"] as? String).flatMap(UUID.init(uuidString:)) {
+            switch response.actionIdentifier {
+            case LiveNotification.checkInAction:
+                try? PendingCheckIns.add(.init(mealID: mealID))
+                await MainActor.run { CheckInIntent.onCheckIn?() }
+            case LiveNotification.snapAction:
+                await MainActor.run { UIApplication.shared.open(DeepLink.snap) }
+            default:
+                break // Opens the app to the live dinner on the feed.
+            }
+            return
+        }
         guard let string = response.notification.request.content.userInfo["url"] as? String,
               let url = URL(string: string)
         else { return }

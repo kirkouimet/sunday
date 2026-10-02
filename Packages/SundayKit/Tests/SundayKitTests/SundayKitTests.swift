@@ -481,3 +481,37 @@ final class PendingRatingsTests: XCTestCase {
         XCTAssertTrue(PendingRatings.read(from: directory).isEmpty)
     }
 }
+
+final class LiveDinnerTests: XCTestCase {
+    func testLiveWindow() {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertTrue(LiveDinner.isLive(startedAt: start, endedAt: nil, now: start.addingTimeInterval(3600)))
+        XCTAssertFalse(LiveDinner.isLive(startedAt: start, endedAt: nil, now: start.addingTimeInterval(6 * 3600)))
+        XCTAssertFalse(LiveDinner.isLive(startedAt: start, endedAt: start.addingTimeInterval(60), now: start.addingTimeInterval(120)))
+        XCTAssertFalse(LiveDinner.isLive(startedAt: nil, endedAt: nil))
+    }
+
+    func testStatus() {
+        XCTAssertEqual(LiveDinner.status(cook: "Mom", people: 4, photos: 3), "Mom's cooking · 4 at the table · 3 photos")
+        XCTAssertEqual(LiveDinner.status(cook: nil, people: 0, photos: 1), "1 photo")
+    }
+
+    func testCheckInOnce() {
+        let once = LiveDinner.checkIn("Ellie", to: Attendance.encode(["Mom", "Dad"]))
+        XCTAssertEqual(Attendance.decode(once), ["Mom", "Dad", "Ellie"])
+        XCTAssertEqual(Attendance.decode(LiveDinner.checkIn("ellie", to: once)), ["Mom", "Dad", "Ellie"])
+    }
+
+    func testPendingCheckIns() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let chili = UUID()
+        try PendingCheckIns.add(.init(mealID: chili), to: directory)
+        try PendingCheckIns.add(.init(mealID: chili), to: directory)
+        XCTAssertTrue(PendingCheckIns.contains(chili, in: directory))
+        var drained: [UUID] = []
+        PendingCheckIns.drain(from: directory) { drained.append($0.mealID) }
+        XCTAssertEqual(drained, [chili])
+        XCTAssertTrue(PendingCheckIns.read(from: directory).isEmpty)
+    }
+}

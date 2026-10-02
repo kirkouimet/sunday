@@ -42,7 +42,9 @@ struct SundayApp: App {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             store.applyWidgetRatings()
+            store.applyPendingCheckIns()
             store.reconcile()
+            LiveDinners.sync(store: store)
             WidgetPublisher.publish(store: store)
             Task {
                 await store.refreshAccountStatus()

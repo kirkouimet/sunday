@@ -37,8 +37,15 @@ enum SundayBook {
 
         let recipes = recipesByDish(meals)
         draw(BookCover(year: year, dinners: dinners))
+        // Each family recipe is printed once, on its own page, after the
+        // first dinner of that dish this year. Chili four times is one recipe.
+        var printed = Set<String>()
         for meal in dinners {
-            draw(BookPage(meal: meal, recipe: recipes[MealName.normalize(meal.displayName)]))
+            draw(BookPage(meal: meal))
+            let key = MealName.normalize(meal.displayName)
+            if let recipe = recipes[key], printed.insert(key).inserted {
+                draw(RecipePage(dish: meal.displayName, text: recipe.text, by: recipe.by))
+            }
         }
         context.closePDF()
         return url
@@ -69,8 +76,20 @@ private struct BookCover: View {
             guard let id = m.id, let date = m.date else { return nil }
             return Attendance.Dinner(id: id, date: date, people: Attendance.decode(m.attendees))
         })
+        let photos = dinners.compactMap { $0.sortedPhotos.first?.thumbnailData }.prefix(6).compactMap(UIImage.init(data:))
         VStack(spacing: 18) {
             Spacer()
+            if !photos.isEmpty {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(150), spacing: 8), count: min(3, photos.count)), spacing: 8) {
+                    ForEach(Array(photos.enumerated()), id: \.offset) { _, image in
+                        Color.clear
+                            .frame(width: 150, height: 150)
+                            .overlay { Image(uiImage: image).resizable().scaledToFill() }
+                            .clipped()
+                    }
+                }
+                .padding(.bottom, 12)
+            }
             Text("The Sunday Book")
                 .font(.system(size: 48, weight: .bold, design: .serif))
             Text(String(year))
@@ -100,7 +119,6 @@ private struct BookCover: View {
 
 private struct BookPage: View {
     let meal: Meal
-    let recipe: (text: String, by: String?)?
 
     var body: some View {
         let people = Attendance.decode(meal.attendees)
@@ -129,16 +147,6 @@ private struct BookPage: View {
                     .font(.system(size: 14, design: .serif))
                     .italic()
             }
-            if let recipe {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(recipe.by.map { "How we make it · \($0)'s way" } ?? "How we make it")
-                        .font(.system(size: 13, weight: .semibold, design: .serif))
-                    Text(recipe.text)
-                        .font(.system(size: 11, design: .serif))
-                        .lineLimit(18)
-                }
-                .padding(.top, 4)
-            }
             if let teller = meal.storyBy, let story = meal.story, !story.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(teller)'s story")
@@ -146,7 +154,6 @@ private struct BookPage: View {
                     Text(story)
                         .font(.system(size: 11, design: .serif))
                         .italic()
-                        .lineLimit(10)
                 }
             }
             Spacer(minLength: 0)
@@ -158,7 +165,40 @@ private struct BookPage: View {
     }
 }
 
-/// Family tab entry: pick a year, make the book, share or print it.
+/// A family recipe, in full, on its own page.
+private struct RecipePage: View {
+    let dish: String
+    let text: String
+    let by: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("How we make it")
+                .font(.system(size: 13, weight: .semibold, design: .serif))
+                .foregroundStyle(bookAccent)
+            Text(dish)
+                .font(.system(size: 28, weight: .bold, design: .serif))
+            if let by, !by.isEmpty {
+                Text("\(by)'s way")
+                    .font(.system(size: 14, design: .serif))
+                    .italic()
+            }
+            Text(text)
+                .font(.system(size: 12, design: .serif))
+                .lineSpacing(3)
+                .minimumScaleFactor(0.7)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(bookInk)
+        .padding(56)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(bookPaper)
+    }
+}
+
+/// Family tab, near the top: this year's book as a thing you can hold.
+/// A cover of the year's photos, how many Sundays are in it, and one tap
+/// to make it (in December, it's the family's gift).
 struct SundayBookSection: View {
     let meals: [Meal]
 
@@ -169,38 +209,87 @@ struct SundayBookSection: View {
     var body: some View {
         let years = SundayBook.years(in: meals)
         if let latest = years.first {
+            let selected = year ?? latest
+            let dinners = meals.filter { !$0.isPlan && $0.date.map { Calendar.current.component(.year, from: $0) == selected } == true }
             Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("The Sunday Book")
-                        .font(.title3.weight(.semibold))
-                        .keepsake()
-                    Text("Your year of Sunday dinners as a book to print or send: every dish, who cooked, who was at the table, and the recipes in your family's own words.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                HStack(alignment: .top, spacing: 14) {
+                    BookThumbnail(dinners: dinners)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("The \(String(selected)) Sunday Book")
+                            .font(.headline)
+                            .keepsake()
+                        Text("\(dinners.count) Sunday\(dinners.count == 1 ? "" : "s"), who cooked, who was at the table, and your recipes in your own words.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if selected == Calendar.current.component(.year, from: .now),
+                           Calendar.current.component(.month, from: .now) == 12 {
+                            Text("Ready to print for the holidays")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Color.sundayAccent)
+                        }
+                    }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 6)
+                .accessibilityElement(children: .combine)
                 if years.count > 1 {
-                    Picker("Year", selection: Binding(get: { year ?? latest }, set: { year = $0; bookURL = nil })) {
+                    Picker("Year", selection: Binding(get: { selected }, set: { year = $0; bookURL = nil })) {
                         ForEach(years, id: \.self) { Text(String($0)).tag($0) }
                     }
                 }
                 if let bookURL {
                     ShareLink(item: bookURL) {
-                        Label("Share or print the \(String(year ?? latest)) book", systemImage: "book.closed.fill")
+                        Label("Share or print the book", systemImage: "book.closed.fill")
                     }
                 } else {
                     Button {
                         isMaking = true
-                        bookURL = SundayBook.make(year: year ?? latest, from: meals)
-                        isMaking = false
+                        Task {
+                            // Let the spinner show before rendering takes the main thread.
+                            try? await Task.sleep(for: .milliseconds(80))
+                            bookURL = SundayBook.make(year: selected, from: meals)
+                            isMaking = false
+                        }
                     } label: {
                         HStack {
-                            Label("Make the \(String(year ?? latest)) book", systemImage: "book")
+                            Label(isMaking ? "Making your book…" : "Make the book", systemImage: "book")
                             if isMaking { Spacer(); ProgressView() }
                         }
                     }
+                    .disabled(isMaking)
                 }
             }
         }
+    }
+}
+
+/// A tiny cover: the year's first photos, like the printed one.
+private struct BookThumbnail: View {
+    let dinners: [Meal]
+
+    var body: some View {
+        let photos = dinners.compactMap { $0.sortedPhotos.first }.prefix(4)
+        ZStack {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(bookPaper)
+            LazyVGrid(columns: [GridItem(.fixed(26), spacing: 3), GridItem(.fixed(26), spacing: 3)], spacing: 3) {
+                ForEach(Array(photos.enumerated()), id: \.offset) { _, photo in
+                    PhotoThumbnail(photo: photo)
+                        .frame(width: 26, height: 26)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+            }
+            .padding(.bottom, 14)
+            VStack {
+                Spacer()
+                Text("Sunday")
+                    .font(.system(size: 9, weight: .bold, design: .serif))
+                    .foregroundStyle(bookInk)
+                    .padding(.bottom, 6)
+            }
+        }
+        .frame(width: 66, height: 86)
+        .shadow(color: .black.opacity(0.18), radius: 3, x: 1, y: 2)
+        .accessibilityHidden(true)
     }
 }

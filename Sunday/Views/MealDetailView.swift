@@ -27,6 +27,12 @@ struct MealDetailView: View {
     @State private var storyTeller: String?
     @State private var isTranscribing = false
     @State private var isChangingStars = false
+    @State private var isTidying = false
+    @AppStorage("hasRatedOnce") private var hasRatedOnce = false
+    /// Once the big title scrolls under the glass buttons, the bar takes it.
+    @State private var titleScrolledAway = false
+    /// What was said, before the model sorted it (for "Back to what was said").
+    @State private var untidied: String?
     @StateObject private var voice = VoiceMemo()
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -45,9 +51,9 @@ struct MealDetailView: View {
         }
         // The big title on the page is the title; keep the bar clear so the
         // photo runs up under it.
-        .navigationTitle("")
+        .navigationTitle(titleScrolledAway ? meal.displayName : "")
         .navigationBarTitleDisplayMode(.inline)
-        .clearNavigationBarOnGlass()
+        .clearNavigationBarOnGlass(!titleScrolledAway)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { if !meal.isGone { toolbarContent } }
         .sheet(isPresented: $isEditing) {
@@ -58,13 +64,19 @@ struct MealDetailView: View {
                 VStack(spacing: 0) {
                     voiceRecorderRow
                         .padding()
+                    if storyTeller == nil, RecipeTidier.isAvailable, !recipeText.isEmpty, !isTranscribing {
+                        tidyRow
+                            .padding(.horizontal)
+                            .padding(.bottom, 10)
+                    }
                     Divider()
                 TextEditor(text: $recipeText)
                     .font(.body)
                     .padding(.horizontal)
                     .overlay(alignment: .topLeading) {
                         if recipeText.isEmpty {
-                            Text("Ingredients, then steps. However Grandma would say it.")
+                            Text(storyTeller.map { "Whatever \($0) wants to remember about this dinner, in their own words." }
+                                 ?? "Ingredients, then steps. However \(recipeTeller) would say it.")
                                 .foregroundStyle(.tertiary)
                                 .padding(.horizontal, 22)
                                 .padding(.top, 8)
@@ -80,23 +92,19 @@ struct MealDetailView: View {
                         }
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Save") {
-                                if voice.isRecording { voice.stopRecording() }
-                                let audio = voice.recorded ?? recipeAudio
-                                if let storyTeller {
-                                    // A guest's story: its own place on this dinner. It can
-                                    // never overwrite the dish's recipe.
-                                    store.setStory(recipeText, audio: audio, by: storyTeller, for: meal)
-                                } else {
-                                    let target = recipeSource ?? meal
-                                    store.setRecipe(recipeText, audio: audio, by: target.recipeBy ?? target.cook, for: target)
-                                }
-                                voice.discardRecording()
-                                isWritingRecipe = false
+                                Task { await saveRecipeSheet() }
                             }
                             .bold()
+                            .disabled(isTranscribing)
                         }
                     }
             }
+        }
+        .onChange(of: voice.recorded) { _, audio in
+            // Voice → text whenever a recording finishes: the Stop button,
+            // the time limit, or Save while recording.
+            guard let audio, recipeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            Task { await transcribe(audio) }
         }
         .confirmationDialog("Delete this dinner for everyone in the family?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
             Button("Delete dinner", role: .destructive) {
@@ -114,6 +122,7 @@ struct MealDetailView: View {
         .onChange(of: stars) { _, newValue in
             guard !meal.isGone, newValue != store.stars(for: meal) else { return }
             store.setRating(newValue, for: meal)
+            if newValue > 0 { hasRatedOnce = true }
         }
     }
 
@@ -127,6 +136,13 @@ struct MealDetailView: View {
                         .font(.largeTitle.bold())
                         .keepsake()
                         .accessibilityAddTraits(.isHeader)
+                        .onGeometryChange(for: Bool.self) { proxy in
+                            proxy.frame(in: .global).minY < 110
+                        } action: { scrolledAway in
+                            if scrolledAway != titleScrolledAway {
+                                withAnimation(.easeInOut(duration: 0.2)) { titleScrolledAway = scrolledAway }
+                            }
+                        }
                     // One line of facts: when · who · season or holiday.
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 8) { metaItems(separated: true) }
@@ -195,9 +211,12 @@ struct MealDetailView: View {
                             .keepsake()
                             .transition(.opacity)
                     }
-                    Label("Only you see your stars. Not even the cook.", systemImage: "lock.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    // Said once, until you've rated something; then it's known.
+                    if !hasRatedOnce {
+                        Label("Only you see your stars. Not even the cook.", systemImage: "lock.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.horizontal)
     }
@@ -377,14 +396,6 @@ struct MealDetailView: View {
             Button {
                 if voice.isRecording {
                     voice.stopRecording()
-                    // Voice → text, on the device, so it can be read and searched.
-                    if recipeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let audio = voice.recorded {
-                        isTranscribing = true
-                        Task {
-                            if let text = await Transcriber.transcribe(audio) { recipeText = text }
-                            isTranscribing = false
-                        }
-                    }
                 } else {
                     Task { await voice.startRecording() }
                 }
@@ -415,6 +426,75 @@ struct MealDetailView: View {
         }
     }
 
+    private var recipeTeller: String {
+        let target = recipeSource ?? meal
+        return (target.recipeBy ?? target.cook).flatMap { $0.isEmpty ? nil : $0 } ?? "Grandma"
+    }
+
+    /// Talk instead of type: the on-device model sorts what was said into
+    /// ingredients and steps. One tap back if it got it wrong.
+    private var tidyRow: some View {
+        HStack(spacing: 10) {
+            if let untidied {
+                Button {
+                    recipeText = untidied
+                    self.untidied = nil
+                } label: {
+                    Label("Back to what was said", systemImage: "arrow.uturn.backward")
+                }
+                .buttonStyle(.bordered)
+            } else {
+                Button {
+                    isTidying = true
+                    Task {
+                        let original = recipeText
+                        if let tidy = await RecipeTidier.tidy(original, dish: meal.displayName), !tidy.isEmpty {
+                            untidied = original
+                            recipeText = tidy
+                        }
+                        isTidying = false
+                    }
+                } label: {
+                    Label("Sort into ingredients & steps", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isTidying)
+                if isTidying { ProgressView() }
+            }
+            Spacer()
+        }
+        .font(.subheadline)
+    }
+
+    private func transcribe(_ audio: Data) async {
+        isTranscribing = true
+        if let text = await Transcriber.transcribe(audio),
+           recipeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            recipeText = text
+        }
+        isTranscribing = false
+    }
+
+    private func saveRecipeSheet() async {
+        if voice.isRecording { voice.stopRecording() }
+        let audio = voice.recorded ?? recipeAudio
+        // Saved mid-recording: still write it down before closing.
+        if recipeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let audio, voice.recorded != nil {
+            await transcribe(audio)
+        }
+        if let storyTeller {
+            // A guest's story: its own place on this dinner. It can
+            // never overwrite the dish's recipe.
+            store.setStory(recipeText, audio: audio, by: storyTeller, for: meal)
+        } else {
+            let target = recipeSource ?? meal
+            store.setRecipe(recipeText, audio: audio, by: target.recipeBy ?? target.cook, for: target)
+        }
+        voice.discardRecording()
+        untidied = nil
+        isWritingRecipe = false
+    }
+
     /// The newest dinner of this dish that has a recipe written down.
     private var recipeSource: Meal? {
         let key = MealName.normalize(meal.displayName)
@@ -430,11 +510,10 @@ struct MealDetailView: View {
             if separated { Text("·").accessibilityHidden(true) }
             CookLabel(name: cook, size: 20)
         }
-        if separated { Text("·").accessibilityHidden(true) }
+        // Holidays are worth a mention; seasons are already in the photos.
         if let holiday = meal.holiday {
+            if separated { Text("·").accessibilityHidden(true) }
             Text(holiday.label).accessibilityLabel(holiday.name)
-        } else {
-            Text("\(meal.season.emoji) \(meal.season.displayName)").accessibilityLabel(meal.season.displayName)
         }
     }
 
@@ -547,8 +626,6 @@ struct MealDetailView: View {
                 HStack(spacing: 6) {
                     Text(summary.date.formatted(.dateTime.month(.abbreviated).day().year()))
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(Season.of(summary.date, hemisphere: .current).emoji)
-                        .accessibilityHidden(true)
                     if isThis, !typeSize.isAccessibilitySize {
                         Text("This dinner")
                             .font(.caption.weight(.semibold))
@@ -620,9 +697,9 @@ extension View {
     /// On iOS 26 the glass toolbar floats over the photo. Earlier versions
     /// keep the standard bar so text never scrolls under bare buttons.
     @ViewBuilder
-    func clearNavigationBarOnGlass() -> some View {
+    func clearNavigationBarOnGlass(_ isClear: Bool = true) -> some View {
         if #available(iOS 26.0, *) {
-            self.toolbarBackground(.hidden, for: .navigationBar)
+            self.toolbarBackground(isClear ? .hidden : .automatic, for: .navigationBar)
         } else {
             self
         }

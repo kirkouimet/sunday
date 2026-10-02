@@ -65,6 +65,10 @@ struct FeedView: View {
             meals.first { $0.date.map { calendar.isDate($0, inSameDayAs: day) } ?? false }
         }
 
+        // Dinner is happening right now.
+        if let live = meals.first(where: \.isLive) {
+            return .live(live)
+        }
         // A plan whose day has passed without a photo: "Did you have Chili?"
         if let stale = meals.first(where: { $0.isPlan && ($0.date ?? .distantFuture) < startOfToday }) {
             return .followUp(stale)
@@ -92,8 +96,10 @@ struct FeedView: View {
         let starsByMeal = MealStore.starsByMeal(ratings)
         let filtered = filteredMeals
         let memoryItem = isFiltering || meals.isEmpty ? nil : memory(starsByMeal: starsByMeal)
-        let featured = isFiltering ? nil : filtered.first
-        let rest = featured == nil ? filtered : Array(filtered.dropFirst())
+        // While dinner is live, its photos are on the Live card, not twice.
+        let shown = isFiltering ? filtered : filtered.filter { !$0.isLive }
+        let featured = isFiltering ? nil : shown.first
+        let rest = featured == nil ? shown : Array(shown.dropFirst())
         let dishes = Suggestions.group(store.summaries(meals: Array(meals), ratings: Array(ratings)))
         let mode = meals.isEmpty ? nil : tonight(starsByMeal: starsByMeal, dishes: dishes)
         let cooks = store.familyNames(from: Array(meals))
@@ -144,14 +150,6 @@ struct FeedView: View {
             .overlay { emptyState(filtered: filtered) }
             .navigationTitle("Sunday")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        router.showIdeas = true
-                    } label: {
-                        Label("What's for dinner?", systemImage: "sparkles")
-                    }
-                    .accessibilityIdentifier("ideasButton")
-                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isAdding = true
@@ -276,6 +274,7 @@ struct TonightCard: View {
         case plan
         case planned(Meal, isToday: Bool)
         case followUp(Meal)
+        case live(Meal)
 
         var isPlanWithMemory: Bool {
             if case .plan = self { return true }
@@ -311,6 +310,10 @@ struct TonightCard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                Button("Still deciding? Get an idea") { router.showIdeas = true }
+                    .font(.subheadline.weight(.medium))
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("ideasButton")
 
             case .missed:
                 Text("Missed last Sunday?")
@@ -351,6 +354,7 @@ struct TonightCard: View {
                         Label("Find an idea", systemImage: "sparkles")
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityIdentifier("ideasButton")
                 }
 
             case .planned(let meal, let isToday):
@@ -362,6 +366,12 @@ struct TonightCard: View {
                     .keepsake()
                     .lineLimit(2)
                 cookPicker(for: meal)
+                if !isToday {
+                    Button("Change the plan") { router.showIdeas = true }
+                        .font(.subheadline.weight(.medium))
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("ideasButton")
+                }
                 if isToday {
                     Button(action: onAdd) {
                         Label("Snap it", systemImage: "camera.fill")
@@ -369,7 +379,20 @@ struct TonightCard: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    // Sunday Live: the whole family checks in and snaps.
+                    Button {
+                        store.startLive(meal)
+                    } label: {
+                        Label("We're sitting down", systemImage: "dot.radiowaves.left.and.right")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .accessibilityHint("Lets everyone in the family check in and add photos to tonight's dinner.")
                 }
+
+            case .live(let meal):
+                LiveDinnerCard(meal: meal, cooks: cooks, onSnap: onAdd)
 
             case .followUp(let meal):
                 Text("Did you have \(meal.displayName)?")
@@ -422,6 +445,7 @@ struct TonightCard: View {
             Text("Other ideas").fixedSize()
         }
         .buttonStyle(.bordered)
+        .accessibilityIdentifier("ideasButton")
     }
 
     private func memoryCaption(_ memory: MealSummary) -> String {

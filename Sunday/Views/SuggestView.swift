@@ -220,7 +220,7 @@ private struct SurpriseCard: View {
                     spins += 1
                     onShuffle()
                 } label: {
-                    Image(systemName: "dice")
+                    Image(systemName: "shuffle")
                         .symbolEffect(.bounce, value: spins)
                         .frame(width: 28)
                 }

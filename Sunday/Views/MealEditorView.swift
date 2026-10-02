@@ -177,7 +177,10 @@ struct MealEditorView: View {
                     .padding(.vertical, 4)
                 }
             }
-            if draft.photos.isEmpty {
+            if draft.photos.isEmpty, focusedField == .name {
+                // Typing the name: the photo can wait; give the form the room.
+                compactPhotoRow
+            } else if draft.photos.isEmpty {
                 emptyPhotoTile
             } else {
                 HStack {
@@ -196,6 +199,30 @@ struct MealEditorView: View {
                 .buttonStyle(.borderless)
             }
         }
+    }
+
+    private var compactPhotoRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "camera.fill")
+                .foregroundStyle(Color.sundayAccent)
+                .accessibilityHidden(true)
+            Text("Add a photo")
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            if CameraPicker.isAvailable {
+                Button {
+                    isShowingCamera = true
+                } label: {
+                    Label("Camera", systemImage: "camera.fill").labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+            }
+            PhotosPicker(selection: $pickerItems, maxSelectionCount: 10, matching: .images) {
+                Label("Library", systemImage: "photo.on.rectangle").labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(minHeight: 44)
     }
 
     /// With no photo yet, adding one is the first thing to do; make it big.
@@ -502,8 +529,10 @@ struct MealEditorView: View {
                             .truncationMode(.tail)
                             .frame(maxWidth: 260)
                     }
-                    .buttonStyle(.bordered)
-                    .font(.footnote)
+                    // Solid, so it reads on the keyboard's glass bar.
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color.sundayAccent)
+                    .font(.footnote.weight(.medium))
                 }
             }
         }
@@ -518,7 +547,13 @@ struct MealEditorView: View {
             draft = MealDraft(meal: meal, stars: store.stars(for: meal))
         } else {
             draft.cook = lastCook
-            draft.date = SundayCalendar.mostRecentSunday(onOrBefore: .now)
+            // Last Sunday, unless it's already logged and today isn't Sunday:
+            // then it's a dinner of its own (a birthday, a Tuesday), not a clash.
+            let lastSunday = SundayCalendar.mostRecentSunday(onOrBefore: .now)
+            let lastSundayLogged = allMeals.contains { meal in
+                !meal.isPlan && meal.date.map { Calendar.current.isDate($0, inSameDayAs: lastSunday) } == true
+            }
+            draft.date = !SundayCalendar.isSunday(.now) && lastSundayLogged ? .now : lastSunday
             // A dinner planned for today (name and cook, no photo yet): this
             // photo is for it, so join it without asking.
             if let plan = sameDayMeal, plan.sortedPhotos.isEmpty {

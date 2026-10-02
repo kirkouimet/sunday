@@ -10,6 +10,7 @@ Canvas with screenshots and pinned critiques: claude.ai/design ("Sunday Design R
 | Loop | Maturity | 🚀 | 🧱 | 🎨 | Biggest idea |
 |---|---|---|---|---|---|
 | 0 (baseline) | – | 3 | 6 | 8 | "Tonight" moment; cooks as people; Ideas as a decision tool |
+| 5 | 8/10 | 2 | 3 | 2 | **Sunday Live** (multiplayer, real-time: Live Activity, "I'm here", everyone's photos); talk instead of type (on-device model) · subtraction "worked" · 4 ✂️ · 4 bugs. Critic: "if loop 6 builds that, expect a genuine leap; if it builds screens, marginal gains" |
 | 4 | 8/10 | 2 | 3 | 2 | 5 ✂️ cuts recommended (new) · Sunday Book (printed yearbook); voice → text · 3 bugs incl. data loss. Critic: "marginal value is now negative" |
 | 3 | 8/10 | 3 | 3 | 4 | Interactive Lock Screen (rate/snap without opening the app); people as pages; heirloom voice · 3 bugs. Critic: "almost all refinement… screens at marginal gains" |
 | 2 | 7/10 | 3 | 4 | 2 | Who was at the table (attendance); Sunday on the Lock Screen; heirloom recipe card · 5 bugs (mostly wiring of round-1 behaviors) |
@@ -77,3 +78,22 @@ Critique (8/10): "the marginal value is now negative: each round adds a concept 
 - 🚀 **Voice → text**: on-device Speech transcribes recordings into the recipe text (never leaves the phone).
 - 🚀 **The Sunday Book**: Family tab makes a printable PDF yearbook: cover with who was around the table, then a page per dinner (photo, cook, at the table, notes, *How we make it · Mom's way*, guest stories). Share or print.
 - 🐛 Family avatar row uses buttons (no stray chevrons) and keeps faces individually accessible; plan buttons wrap at large text; names in At the table wrap to two lines; timeline uses short dates without "Not rated".
+
+## Loop 5 → 6: Sunday Live (implemented)
+
+Critique (8/10): "Subtraction worked: the first round where the app feels lighter than the one before." But "the screens are definitively on the flat part of the curve. A step-change is still available, but not on a screen: Sunday as a live, multiplayer moment."
+
+- 🚀 **Sunday Live.** On Sunday the plan card offers *We're sitting down*. The dinner goes live for the family (`liveAt` / `liveBy` / `liveEndedAt` sync through the share):
+  - The feed shows a Live card: a pulsing dot, the dish, "Dad's cooking · 4 at the table · 2 photos", faces, everyone's photos so far, *I'm here*, *Snap*, and *That's dinner*.
+  - A **Live Activity** runs on the Lock Screen and in the Dynamic Island, with faces, status, an *I'm here* button (a `LiveActivityIntent`, queued in the App Group so it survives a cold launch), and a tap anywhere to open the camera.
+  - Other family phones get "🍽️ Sunday dinner is on · Dad's cooking Chili. At the table?" with *I'm here* / *Snap a photo* right on the notification. Their own Live Activity starts the moment they open the app (CloudKit can't push-to-start without a server).
+  - Attendance reports itself: nobody taps faces in the editor any more. Each phone learns who it belongs to once ("Which one are you?").
+- 🚀 **Talk instead of type.** After a recording is transcribed, *Sort into ingredients & steps* runs Apple's on-device model (Foundation Models, `@Generable`), keeping the cook's words, with a one-tap *Back to what was said*.
+- 🐛 Transcription is on-device or nothing (no server fallback); it runs whenever a recording finishes (Stop, the time limit, or Save mid-recording); recordings run up to 10 minutes so Grandma can finish.
+- 🐛 Detail: the bar takes the dish name once the big title scrolls under the glass buttons.
+- 🐛 Sunday Book: each recipe prints once, in full, on its own page; the cover is a collage of the year; making it no longer freezes the UI.
+- 🧱 The Book moved to the top of Family as an event (cover thumbnail, "N Sundays", "Ready to print for the holidays" in December).
+- 🧱 *+* on a weekday after a logged Sunday starts a dinner for today instead of opening a clash.
+- ✂️ The ✨ button is gone: Ideas lives in context ("Other ideas", "Still deciding?", "Change the plan"). Cut "Where it started", "Sundays with" when everyone ties, the hemisphere picker (the region decides), the season in Detail and the timeline, and the privacy line after your first rating.
+- 🎨 Name suggestions are solid chips on the keyboard bar; the photo tile shrinks to a row while you type; *Another idea* uses a shuffle icon; the story sheet's placeholder fits stories.
+- Public layer: follower and fork counts are cut from the profile; Requests puts *From your family* first (names shown, "Tell it" to record), with strangers' anonymous counts below.
