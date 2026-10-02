@@ -15,7 +15,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
 /// Receives "Join Sunday Dinners" taps from the iCloud invite link.
 final class SceneDelegate: NSObject, UIWindowSceneDelegate {
+    /// Invite tapped while the app wasn't running: the metadata arrives at launch.
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        guard let metadata = connectionOptions.cloudKitShareMetadata else { return }
+        accept(metadata)
+    }
+
+    /// Invite tapped while the app was already running.
     func windowScene(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
+        accept(metadata)
+    }
+
+    private func accept(_ metadata: CKShare.Metadata) {
         Task { @MainActor in
             await MealStore.shared.acceptShare(metadata)
         }

@@ -1,0 +1,48 @@
+import Foundation
+
+public enum SundayCalendar {
+    public static func isSunday(_ date: Date, calendar: Calendar = .current) -> Bool {
+        calendar.component(.weekday, from: date) == 1
+    }
+
+    /// Start of the most recent Sunday on or before `date`, keeping the time of
+    /// day of `date` so a dinner logged now sorts sensibly.
+    public static func mostRecentSunday(onOrBefore date: Date, calendar: Calendar = .current) -> Date {
+        let weekday = calendar.component(.weekday, from: date) // 1 = Sunday
+        return calendar.date(byAdding: .day, value: -(weekday - 1), to: date) ?? date
+    }
+
+    /// How many Sundays in a row (ending this Sunday, or last Sunday if this
+    /// one hasn't been logged yet) have at least one dinner.
+    public static func streak(mealDates: [Date], now: Date = .now, calendar: Calendar = .current) -> Int {
+        let sundays = Set(mealDates.filter { isSunday($0, calendar: calendar) }.map { calendar.startOfDay(for: $0) })
+        guard !sundays.isEmpty else { return 0 }
+
+        var cursor = calendar.startOfDay(for: mostRecentSunday(onOrBefore: now, calendar: calendar))
+        // Today's dinner may not be logged yet; don't break the streak for it.
+        if !sundays.contains(cursor) {
+            guard let previous = calendar.date(byAdding: .day, value: -7, to: cursor) else { return 0 }
+            cursor = calendar.startOfDay(for: previous)
+        }
+
+        var count = 0
+        while sundays.contains(cursor) {
+            count += 1
+            guard let previous = calendar.date(byAdding: .day, value: -7, to: cursor) else { break }
+            cursor = calendar.startOfDay(for: previous)
+        }
+        return count
+    }
+
+    public static let milestones: Set<Int> = [1, 10, 25, 50, 52, 100, 150, 200, 250, 300, 365, 500, 1000]
+
+    /// A celebration line when `count` dinners is worth marking, else nil.
+    public static func milestoneMessage(forDinnerCount count: Int) -> String? {
+        guard milestones.contains(count) else { return nil }
+        switch count {
+        case 1: return "Your first Sunday dinner. Here's to many more."
+        case 52: return "52 dinners: a whole year of Sundays together."
+        default: return "That's \(count) Sunday dinners together."
+        }
+    }
+}

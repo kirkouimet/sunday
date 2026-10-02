@@ -15,7 +15,7 @@ struct SundayApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
-            store.refreshShare()
+            store.reconcile()
             Task {
                 await store.refreshAccountStatus()
                 await Reminders.rescheduleIfEnabled(store: store)
@@ -25,15 +25,53 @@ struct SundayApp: App {
 }
 
 struct RootView: View {
+    @EnvironmentObject private var store: MealStore
+
     var body: some View {
         TabView {
             FeedView()
                 .tabItem { Label("Dinners", systemImage: "fork.knife") }
             SuggestView()
-                .tabItem { Label("What's for dinner?", systemImage: "sparkles") }
+                .tabItem { Label("Ideas", systemImage: "sparkles") }
             FamilyView()
                 .tabItem { Label("Family", systemImage: "person.3") }
         }
+        .sheet(item: Binding(
+            get: { store.milestone.map(Milestone.init) },
+            set: { if $0 == nil { store.milestone = nil } }
+        )) { milestone in
+            MilestoneView(message: milestone.message)
+                .presentationDetents([.medium])
+        }
+    }
+}
+
+private struct Milestone: Identifiable {
+    let message: String
+    var id: String { message }
+}
+
+struct MilestoneView: View {
+    let message: String
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var bounce = false
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "party.popper.fill")
+                .font(.system(size: 64))
+                .foregroundStyle(Color.sundayAccent)
+                .symbolEffect(.bounce, value: bounce)
+            Text(message)
+                .font(.title2.bold())
+                .multilineTextAlignment(.center)
+            Button("Keep it going") { dismiss() }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(32)
+        .onAppear { if !reduceMotion { bounce.toggle() } }
+        .sensoryFeedback(.success, trigger: bounce)
     }
 }
 

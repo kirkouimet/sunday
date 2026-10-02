@@ -12,12 +12,37 @@ extension Hemisphere {
 
 extension Meal {
     var season: Season { Season.of(date ?? .now, hemisphere: .current) }
+
+    /// True once the object is gone, locally or because someone else deleted it.
+    var isGone: Bool { isDeleted || managedObjectContext == nil }
 }
 
-/// Tap a star to set it; tap the same star again to clear.
+extension Color {
+    static let star = Color("StarColor")
+    /// Accent for filled backgrounds. Pair with `onAccentFill` text.
+    static let accentFill = Color("AccentFill")
+    /// White on the light-mode fill, black on the brighter dark-mode fill.
+    static let onAccentFill = Color(.systemBackground)
+}
+
+func starsDescription(_ stars: Double) -> String {
+    if stars == stars.rounded() {
+        let whole = Int(stars)
+        return "\(whole) of 5 star\(whole == 1 ? "" : "s")"
+    }
+    return "\(stars.formatted(.number.precision(.fractionLength(1)))) of 5 stars"
+}
+
+/// Tap a star to set it; tap the same star again to clear. One adjustable
+/// element for VoiceOver (swipe up/down to change).
 struct StarRatingView: View {
     @Binding var stars: Int
-    var size: CGFloat = 28
+    @ScaledMetric private var scaledSize: CGFloat
+
+    init(stars: Binding<Int>, size: CGFloat = 28) {
+        _stars = stars
+        _scaledSize = ScaledMetric(wrappedValue: size, relativeTo: .title)
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -26,39 +51,71 @@ struct StarRatingView: View {
                     stars = stars == value ? 0 : value
                 } label: {
                     Image(systemName: value <= stars ? "star.fill" : "star")
-                        .font(.system(size: size))
-                        .foregroundStyle(value <= stars ? Color.yellow : Color.secondary.opacity(0.5))
+                        .font(.system(size: scaledSize))
+                        .foregroundStyle(value <= stars ? Color.star : Color.secondary.opacity(0.5))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(value) star\(value == 1 ? "" : "s")")
             }
         }
         .sensoryFeedback(.selection, trigger: stars)
-        .accessibilityElement(children: .contain)
-        .accessibilityValue("\(stars) of 5")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your stars")
+        .accessibilityValue(stars == 0 ? "Not rated" : starsDescription(Double(stars)))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: stars = min(5, stars + 1)
+            case .decrement: stars = max(0, stars - 1)
+            @unknown default: break
+            }
+        }
     }
 }
 
 /// Read-only stars for cards and lists.
 struct StarsLabel: View {
     let stars: Double
-    var size: CGFloat = 12
+    @ScaledMetric private var scaledSize: CGFloat
+
+    init(stars: Double, size: CGFloat = 12) {
+        self.stars = stars
+        _scaledSize = ScaledMetric(wrappedValue: size, relativeTo: .subheadline)
+    }
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(1...5, id: \.self) { value in
                 Image(systemName: symbol(for: value))
-                    .font(.system(size: size))
-                    .foregroundStyle(Double(value) - 0.5 <= stars ? Color.yellow : Color.secondary.opacity(0.4))
+                    .font(.system(size: scaledSize))
+                    .foregroundStyle(Double(value) - 0.5 <= stars ? Color.star : Color.secondary.opacity(0.4))
             }
         }
-        .accessibilityLabel(String(format: "%.1f stars", stars))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(starsDescription(stars))
     }
 
     private func symbol(for value: Int) -> String {
         if Double(value) <= stars { return "star.fill" }
         if Double(value) - 0.5 <= stars { return "star.leadinghalf.filled" }
         return "star"
+    }
+}
+
+/// Stars marked as yours, so nobody mistakes them for a family score.
+struct YourStarsLabel: View {
+    let stars: Double
+    var size: CGFloat = 12
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "person.fill")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            StarsLabel(stars: stars, size: size)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your rating, \(starsDescription(stars))")
     }
 }
 
@@ -71,15 +128,32 @@ struct SeasonBadge: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(.thinMaterial, in: Capsule())
+            .accessibilityLabel(season.displayName)
     }
 }
 
 /// Decodes thumbnails off the main thread and caches them so the feed scrolls smoothly.
 struct PhotoThumbnail: View {
-    let photo: Photo?
-    var useFullImage = false
+    @ObservedObject private var photo: Photo
+    private let hasPhoto: Bool
+    private let useFullImage: Bool
 
     @State private var image: UIImage?
+
+    init(photo: Photo?, useFullImage: Bool = false) {
+        // Placeholder object for the "no photo" state keeps @ObservedObject non-optional.
+        _photo = ObservedObject(wrappedValue: photo ?? PhotoThumbnail.placeholder)
+        self.hasPhoto = photo != nil
+        self.useFullImage = useFullImage
+    }
+
+    private static let placeholder = Photo(entity: SundayModel.shared.entitiesByName["Photo"]!, insertInto: nil)
+
+    private var taskKey: String {
+        guard hasPhoto else { return "none" }
+        // Changes when the image data arrives from iCloud, so we retry.
+        return "\(photo.objectID)-\(photo.thumbnailData?.count ?? 0)-\(photo.imageData?.count ?? 0)"
+    }
 
     var body: some View {
         ZStack {
@@ -88,15 +162,15 @@ struct PhotoThumbnail: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-            } else if photo == nil {
+            } else if !hasPhoto {
                 Image(systemName: "fork.knife")
                     .font(.largeTitle)
                     .foregroundStyle(.secondary)
             }
         }
         .clipped()
-        .task(id: photo?.objectID) {
-            image = await PhotoCache.image(for: photo, full: useFullImage)
+        .task(id: taskKey) {
+            image = hasPhoto ? await PhotoCache.image(for: photo, full: useFullImage) : nil
         }
     }
 }
@@ -105,11 +179,10 @@ struct PhotoThumbnail: View {
 enum PhotoCache {
     private static let cache = NSCache<NSString, UIImage>()
 
-    static func image(for photo: Photo?, full: Bool) async -> UIImage? {
-        guard let photo else { return nil }
-        let key = "\(photo.objectID.uriRepresentation().absoluteString)-\(full)" as NSString
-        if let cached = cache.object(forKey: key) { return cached }
+    static func image(for photo: Photo, full: Bool) async -> UIImage? {
         guard let data = full ? (photo.imageData ?? photo.thumbnailData) : (photo.thumbnailData ?? photo.imageData) else { return nil }
+        let key = "\(photo.objectID.uriRepresentation().absoluteString)-\(full)-\(data.count)" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
         let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
             guard let image = UIImage(data: data) else { return nil }
             return await image.byPreparingForDisplay() ?? image

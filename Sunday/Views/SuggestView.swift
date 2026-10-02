@@ -13,6 +13,7 @@ struct SuggestView: View {
     private var ratings: FetchedResults<Rating>
 
     @State private var surprise: Dish?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var suggestions: Suggestions {
         Suggestions(meals: store.summaries(meals: Array(meals), ratings: Array(ratings)), hemisphere: .current)
@@ -29,14 +30,14 @@ struct SuggestView: View {
             List {
                 Section {
                     Button {
-                        withAnimation(.spring) { surprise = suggestions.surprise() }
+                        withAnimation(reduceMotion ? nil : .spring) { surprise = suggestions.surprise() }
                     } label: {
                         HStack {
                             Image(systemName: "dice.fill")
                                 .font(.title2)
                             VStack(alignment: .leading) {
                                 Text("Surprise me").font(.headline)
-                                Text("Pick something we loved").font(.caption).foregroundStyle(.secondary)
+                                Text("Pick one of our favorites").font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -131,7 +132,7 @@ private struct SuggestionRow: View {
             }
             Spacer()
             if let stars {
-                StarsLabel(stars: stars, size: 10)
+                YourStarsLabel(stars: stars, size: 10)
             }
         }
     }

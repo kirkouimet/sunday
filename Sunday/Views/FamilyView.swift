@@ -34,6 +34,10 @@ struct FamilyView: View {
 
                 Section {
                     LabeledContent("Dinners logged", value: "\(meals.count)")
+                    let streak = SundayCalendar.streak(mealDates: meals.compactMap(\.date))
+                    if streak > 0 {
+                        LabeledContent("Sundays in a row", value: "\(streak)")
+                    }
                     if let first = meals.last?.date {
                         LabeledContent("Since", value: first.dinnerFormatted)
                     }
@@ -48,8 +52,8 @@ struct FamilyView: View {
                 }
                 .ignoresSafeArea()
             }
-            .alert("Couldn't set up sharing", isPresented: .constant(shareError != nil)) {
-                Button("OK") { shareError = nil }
+            .alert("Couldn't set up sharing", isPresented: Binding(get: { shareError != nil }, set: { if !$0 { shareError = nil } })) {
+                Button("OK") {}
             } message: {
                 Text(shareError ?? "")
             }
@@ -80,7 +84,14 @@ struct FamilyView: View {
                 LabeledContent("Joined", value: ownerName.map { "\($0)'s family" } ?? "Family")
             }
 
-            if store.role != .participant {
+            if store.role == .solo, store.persistence.isCloudBacked, !store.hasCompletedFirstImport {
+                HStack {
+                    ProgressView()
+                    Text("Checking iCloud for your family…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            } else if store.role != .participant {
                 Button {
                     openSharing()
                 } label: {
@@ -99,7 +110,7 @@ struct FamilyView: View {
         } header: {
             Text("Family sharing")
         } footer: {
-            Text("Dinners and photos are shared with everyone you invite. Star ratings are always private: they stay in your own iCloud.")
+            Text("Everyone you invite can see and add dinners, photos and notes. Star ratings are always private and stay in your own iCloud.")
         }
     }
 

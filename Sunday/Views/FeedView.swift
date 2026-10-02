@@ -14,10 +14,11 @@ struct FeedView: View {
     @State private var searchText = ""
     @State private var seasonFilter: Season?
     @State private var isAdding = false
+    @State private var editingMeal: Meal?
 
-    private var starsByMeal: [UUID: Int] {
-        Dictionary(ratings.compactMap { r in r.mealID.map { ($0, Int(r.stars)) } }, uniquingKeysWith: { a, _ in a })
-    }
+    private var starsByMeal: [UUID: Int] { MealStore.starsByMeal(ratings) }
+
+    private var isFiltering: Bool { seasonFilter != nil || !MealName.normalize(searchText).isEmpty }
 
     private var filteredMeals: [Meal] {
         let query = MealName.normalize(searchText)
@@ -29,32 +30,62 @@ struct FeedView: View {
         }
     }
 
+    /// Feed grouped by year, newest first, so years of Sundays read like an album.
+    private var mealsByYear: [(year: Int, meals: [Meal])] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: filteredMeals) { calendar.component(.year, from: $0.date ?? .now) }
+        return grouped.keys.sorted(by: >).map { ($0, grouped[$0] ?? []) }
+    }
+
+    private var streak: Int {
+        SundayCalendar.streak(mealDates: meals.compactMap(\.date))
+    }
+
+    private var memory: MealSummary? {
+        Suggestions(meals: store.summaries(meals: Array(meals), ratings: Array(ratings)), hemisphere: .current)
+            .thisTimeInPastYears(windowDays: 7).first
+    }
+
+    private let columns = [GridItem(.adaptive(minimum: 320), spacing: 20, alignment: .top)]
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 if !meals.isEmpty {
                     seasonPicker
+                    if !isFiltering, let memory, let meal = store.meal(withID: memory.id) {
+                        OnThisDayCard(meal: meal, summary: memory)
+                            .padding(.horizontal)
+                            .padding(.bottom, 8)
+                    }
                 }
-                LazyVStack(spacing: 20) {
-                    ForEach(filteredMeals) { meal in
-                        NavigationLink(value: meal.objectID) {
-                            MealCard(meal: meal, stars: meal.id.flatMap { starsByMeal[$0] } ?? 0)
+                LazyVGrid(columns: columns, spacing: 20, pinnedViews: [.sectionHeaders]) {
+                    ForEach(mealsByYear, id: \.year) { group in
+                        Section {
+                            ForEach(group.meals) { meal in
+                                card(for: meal)
+                            }
+                        } header: {
+                            yearHeader(group.year, count: group.meals.count)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 24)
             }
+            .background(Color(.systemGroupedBackground))
             .overlay { emptyState }
             .navigationTitle("Sunday")
-            .navigationDestination(for: NSManagedObjectID.self) { id in
-                if let meal = try? store.context.existingObject(with: id) as? Meal {
-                    MealDetailView(meal: meal)
-                }
-            }
-            .searchable(text: $searchText, prompt: "Search dinners")
             .toolbar {
+                if streak >= 2 {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Label("\(streak) Sundays in a row", systemImage: "flame.fill")
+                            .labelStyle(.titleAndIcon)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.sundayAccent)
+                            .accessibilityLabel("\(streak) Sundays in a row")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isAdding = true
@@ -63,10 +94,47 @@ struct FeedView: View {
                     }
                 }
             }
+            .navigationDestination(for: NSManagedObjectID.self) { id in
+                if let meal = try? store.context.existingObject(with: id) as? Meal, !meal.isGone {
+                    MealDetailView(meal: meal)
+                }
+            }
+            .searchable(text: $searchText, prompt: "Search dinners, cooks, notes")
             .sheet(isPresented: $isAdding) {
                 MealEditorView()
             }
+            .sheet(item: $editingMeal) { meal in
+                MealEditorView(meal: meal)
+            }
         }
+    }
+
+    private func card(for meal: Meal) -> some View {
+        MealCard(meal: meal, stars: meal.id.flatMap { starsByMeal[$0] } ?? 0)
+            .contextMenu {
+                if store.canEdit(meal) {
+                    Button {
+                        editingMeal = meal
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                }
+            }
+    }
+
+    private func yearHeader(_ year: Int, count: Int) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(String(year))
+                .font(.title2.bold())
+            Text("\(count) dinner\(count == 1 ? "" : "s")")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemGroupedBackground))
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var seasonPicker: some View {
@@ -89,11 +157,14 @@ struct FeedView: View {
             Text(title)
                 .font(.subheadline.weight(.medium))
                 .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(isSelected ? Color.sundayAccent : Color.secondary.opacity(0.12), in: Capsule())
-                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .padding(.vertical, 8)
+                .background(isSelected ? Color.accentFill : Color.secondary.opacity(0.12), in: Capsule())
+                .foregroundStyle(isSelected ? Color.onAccentFill : Color.primary)
+                .frame(minHeight: 44)
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -117,7 +188,47 @@ struct MealCard: View {
     @ObservedObject var meal: Meal
     let stars: Int
 
+    @EnvironmentObject private var store: MealStore
+
+    /// Nudge everyone to rate recent dinners, right on the card.
+    private var invitesRating: Bool {
+        guard stars == 0, let date = meal.date else { return false }
+        return Date.now.timeIntervalSince(date) < 7 * 86_400
+    }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationLink(value: meal.objectID) {
+                summary
+            }
+            .buttonStyle(.plain)
+
+            if invitesRating {
+                Divider().padding(.horizontal, 14)
+                HStack {
+                    Text("How was it?")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    StarRatingView(stars: Binding(
+                        get: { stars },
+                        set: { store.setRating($0, for: meal) }
+                    ), size: 20)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
+            }
+        }
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(.separator).opacity(0.5), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+    }
+
+    private var summary: some View {
         VStack(alignment: .leading, spacing: 0) {
             PhotoThumbnail(photo: meal.sortedPhotos.first)
                 .frame(height: 240)
@@ -135,30 +246,94 @@ struct MealCard: View {
                             .padding(10)
                     }
                 }
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(meal.displayName)
                     .font(.title3.weight(.semibold))
                     .lineLimit(2)
-                HStack {
-                    Text((meal.date ?? .now).dinnerFormatted)
-                    if let cook = meal.cook, !cook.isEmpty {
-                        Text("· by \(cook)")
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        meta
+                        Spacer()
+                        if stars > 0 { YourStarsLabel(stars: Double(stars)) }
                     }
-                    Spacer()
-                    if stars > 0 {
-                        StarsLabel(stars: Double(stars))
+                    VStack(alignment: .leading, spacing: 4) {
+                        meta
+                        if stars > 0 { YourStarsLabel(stars: Double(stars)) }
                     }
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
             .padding(14)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityText)
+            .accessibilityValue(stars > 0 ? "Your rating, \(starsDescription(Double(stars)))" : "Not rated")
+            .accessibilityHint("Shows photos and history")
         }
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var meta: some View {
+        HStack(spacing: 4) {
+            Text((meal.date ?? .now).dinnerFormatted)
+            if let cook = meal.cook, !cook.isEmpty {
+                Text("· cooked by \(cook)")
+            }
+        }
+    }
+
+    private var accessibilityText: String {
+        var parts = [meal.displayName, (meal.date ?? .now).dinnerFormatted]
+        if let cook = meal.cook, !cook.isEmpty { parts.append("cooked by \(cook)") }
+        parts.append(meal.season.displayName)
+        let count = meal.sortedPhotos.count
+        if count > 1 { parts.append("\(count) photos") }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// "A year ago this week" memory at the top of the feed.
+struct OnThisDayCard: View {
+    @ObservedObject var meal: Meal
+    let summary: MealSummary
+
+    private var whenText: String {
+        let years = max(1, Calendar.current.dateComponents([.year], from: summary.date, to: .now).year ?? 1)
+        return years == 1 ? "A year ago this week" : "\(years) years ago this week"
+    }
+
+    var body: some View {
+        NavigationLink(value: meal.objectID) {
+            HStack(spacing: 14) {
+                PhotoThumbnail(photo: meal.sortedPhotos.first)
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(whenText, systemImage: "clock.arrow.circlepath")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.sundayAccent)
+                    Text(summary.name)
+                        .font(.headline)
+                        .lineLimit(2)
+                    Text(summary.date.dinnerFormatted)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(12)
+            .background(Color.sundayAccent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(whenText): \(summary.name), \(summary.date.dinnerFormatted)")
+        .accessibilityAddTraits(.isButton)
     }
 }
 

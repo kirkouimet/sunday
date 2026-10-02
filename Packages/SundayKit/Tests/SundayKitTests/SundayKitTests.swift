@@ -122,3 +122,47 @@ final class SuggestionsTests: XCTestCase {
         XCTAssertNil(Suggestions(meals: [], now: .now).surprise())
     }
 }
+
+final class SundayCalendarTests: XCTestCase {
+    var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    func date(_ year: Int, _ month: Int, _ day: Int, hour: Int = 18) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+    }
+
+    // 2026-09-27 and 2026-10-04 are Sundays; 2026-10-02 is a Friday.
+
+    func testMostRecentSunday() {
+        let sunday = SundayCalendar.mostRecentSunday(onOrBefore: date(2026, 10, 2), calendar: calendar)
+        XCTAssertEqual(calendar.dateComponents([.year, .month, .day], from: sunday), DateComponents(year: 2026, month: 9, day: 27))
+        XCTAssertEqual(SundayCalendar.mostRecentSunday(onOrBefore: date(2026, 10, 4), calendar: calendar), date(2026, 10, 4))
+        XCTAssertTrue(SundayCalendar.isSunday(date(2026, 10, 4), calendar: calendar))
+        XCTAssertFalse(SundayCalendar.isSunday(date(2026, 10, 2), calendar: calendar))
+    }
+
+    func testStreakCountsConsecutiveSundays() {
+        let dates = [date(2026, 9, 27), date(2026, 9, 20), date(2026, 9, 13), date(2026, 8, 30), date(2026, 9, 16)]
+        XCTAssertEqual(SundayCalendar.streak(mealDates: dates, now: date(2026, 10, 2), calendar: calendar), 3)
+    }
+
+    func testStreakSurvivesUnloggedToday() {
+        let dates = [date(2026, 9, 27), date(2026, 9, 20)]
+        XCTAssertEqual(SundayCalendar.streak(mealDates: dates, now: date(2026, 10, 4, hour: 9), calendar: calendar), 2)
+        XCTAssertEqual(SundayCalendar.streak(mealDates: dates + [date(2026, 10, 4)], now: date(2026, 10, 4), calendar: calendar), 3)
+    }
+
+    func testStreakBrokenByMissedSunday() {
+        XCTAssertEqual(SundayCalendar.streak(mealDates: [date(2026, 9, 13)], now: date(2026, 10, 2), calendar: calendar), 0)
+        XCTAssertEqual(SundayCalendar.streak(mealDates: [], now: date(2026, 10, 2), calendar: calendar), 0)
+    }
+
+    func testMilestones() {
+        XCTAssertNotNil(SundayCalendar.milestoneMessage(forDinnerCount: 1))
+        XCTAssertEqual(SundayCalendar.milestoneMessage(forDinnerCount: 100), "That's 100 Sunday dinners together.")
+        XCTAssertNil(SundayCalendar.milestoneMessage(forDinnerCount: 7))
+    }
+}
