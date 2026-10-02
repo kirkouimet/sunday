@@ -13,6 +13,7 @@ struct SuggestView: View {
     private var ratings: FetchedResults<Rating>
 
     @State private var surprise: Dish?
+    @State private var path: [NSManagedObjectID] = []
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -21,7 +22,7 @@ struct SuggestView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             let suggestions = suggestions
             // Longest-missed first: that's the useful order when everything is a favorite.
             let favorites = Array(suggestions.favoritesDue()
@@ -34,7 +35,8 @@ struct SuggestView: View {
             List {
                 if !suggestions.dishes.isEmpty {
                     Section {
-                        SurpriseCard(pick: surprise ?? suggestions.surprise(), store: store) {
+                        SurpriseCard(pick: surprise ?? suggestions.surprise(), store: store,
+                                     onOpen: { path.append($0) }) {
                             withAnimation(reduceMotion ? nil : .spring(duration: 0.45)) {
                                 surprise = suggestions.surprise()
                             }
@@ -161,6 +163,7 @@ private struct SuggestionRow: View {
 private struct SurpriseCard: View {
     let pick: Dish?
     let store: MealStore
+    var onOpen: (NSManagedObjectID) -> Void
     var onShuffle: () -> Void
 
     @State private var spins = 0
@@ -197,7 +200,11 @@ private struct SurpriseCard: View {
 
             HStack(spacing: 10) {
                 if let meal {
-                    NavigationLink(value: meal.objectID) {
+                    // A Button, not a NavigationLink: inside a List a link
+                    // turns into a plain row with a chevron.
+                    Button {
+                        onOpen(meal.objectID)
+                    } label: {
                         Text("Let's make it").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)

@@ -188,7 +188,7 @@ struct MealEditorView: View {
     /// With no photo yet, adding one is the first thing to do; make it big.
     private var emptyPhotoTile: some View {
         VStack(spacing: 14) {
-            Image(systemName: "camera.macro")
+            Image(systemName: "camera.fill")
                 .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(Color.sundayAccent)
                 .accessibilityHidden(true)

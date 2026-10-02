@@ -80,10 +80,19 @@ final class ScreenshotTests: XCTestCase {
 
     private func tapTab(_ app: XCUIApplication, _ name: String) {
         let tab = app.tabBars.buttons[name].firstMatch
-        if tab.waitForExistence(timeout: 6) {
+        if !tab.waitForExistence(timeout: 4) {
+            // iOS 26 minimizes the tab bar after scrolling; scroll back up to expand it.
+            app.swipeDown()
+            app.swipeDown()
+        }
+        if tab.waitForExistence(timeout: 4) {
             tab.tap()
-        } else {
+        } else if app.buttons[name].firstMatch.exists {
             app.buttons[name].firstMatch.tap()
+        } else {
+            // Last resort: the minimized tab bar's selected item, then the target.
+            app.tabBars.buttons.element(boundBy: 0).tap()
+            if tab.waitForExistence(timeout: 3) { tab.tap() }
         }
         sleep(1)
     }
