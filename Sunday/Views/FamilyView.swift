@@ -7,6 +7,7 @@ struct FamilyView: View {
     @EnvironmentObject private var store: MealStore
 
     @AppStorage(Reminders.enabledKey) private var remindersEnabled = false
+    @AppStorage(FamilyNotifier.enabledKey) private var familyPostAlerts = true
     @AppStorage(Reminders.hourKey) private var reminderHour = 17
     @AppStorage(Reminders.minuteKey) private var reminderMinute = 30
     @AppStorage(Hemisphere.storageKey) private var hemisphere: Hemisphere = .northern
@@ -144,10 +145,21 @@ struct FamilyView: View {
             if remindersEnabled {
                 DatePicker("Time", selection: reminderTime, displayedComponents: .hourAndMinute)
             }
+            if store.role != .solo {
+                Toggle("When family posts a dinner", isOn: $familyPostAlerts)
+            }
         } header: {
-            Text("Reminders")
+            Text("Notifications")
         } footer: {
-            Text("A nudge every Sunday to snap dinner, with a memory from past years when we have one.")
+            Text(store.role == .solo
+                 ? "A nudge every Sunday to snap dinner, with a memory from past years when we have one."
+                 : "A nudge every Sunday to snap dinner, and a heads-up with the photo when someone posts one.")
+        }
+        .onChange(of: familyPostAlerts) { _, enabled in
+            guard enabled else { return }
+            Task {
+                if !(await Reminders.requestAuthorization()) { familyPostAlerts = false }
+            }
         }
         .onChange(of: remindersEnabled) { _, enabled in
             Task {

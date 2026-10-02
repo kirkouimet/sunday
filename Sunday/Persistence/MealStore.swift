@@ -160,7 +160,10 @@ final class MealStore: ObservableObject {
             throw error
         }
 
-        if isNew { checkMilestone() }
+        if isNew {
+            FamilyNotifier.markKnown(meal.id)
+            checkMilestone()
+        }
         WidgetPublisher.publish(store: self)
 
         // Placing the meal in the family zone is a network round trip; don't
@@ -467,6 +470,7 @@ final class MealStore: ObservableObject {
                         self.startSharedImportFallback()
                     }
                 }
+                if self.persistence.isCloudBacked { FamilyNotifier.checkForNewDinners(store: self) }
                 self.reconcile()
             }
         })

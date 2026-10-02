@@ -1,7 +1,17 @@
 import CloudKit
 import UIKit
+import UserNotifications
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = NotificationRouter.shared
+        // Silent pushes let CloudKit sync (and us notice new family dinners)
+        // in the background.
+        application.registerForRemoteNotifications()
+        return true
+    }
+
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
