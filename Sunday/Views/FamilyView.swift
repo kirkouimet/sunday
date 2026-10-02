@@ -175,6 +175,6 @@ struct FamilyView: View {
     }
 }
 
-extension CKShare: Identifiable {
+extension CKShare: @retroactive Identifiable {
     public var id: CKRecord.ID { recordID }
 }

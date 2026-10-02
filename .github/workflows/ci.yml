@@ -64,7 +64,10 @@ jobs:
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -resultBundlePath Screenshots.xcresult \
             -quiet \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM= \
+            PROVISIONING_PROFILE_SPECIFIER=
 
       - name: Report test failures
         if: failure()
@@ -96,10 +99,21 @@ jobs:
                   src = a['exportedFileName']
                   name = a.get('suggestedHumanReadableName', src)
                   base = os.path.splitext(name)[0].split('_')[0]
-                  if os.path.exists(src):
+                  if not os.path.exists(src):
+                      continue
+                  if src.endswith('.png'):
                       os.rename(src, base + '.png')
+                  else:
+                      os.remove(src)
           PY
           ls -la
+
+      - name: Collect crash reports
+        if: always()
+        run: |
+          mkdir -p shots
+          find ~/Library/Logs/DiagnosticReports -name 'Sunday*' -newer Sunday.xcodeproj -exec cp {} shots/ \; 2>/dev/null || true
+          for f in shots/*.ips; do [ -f "$f" ] && head -c 6000 "$f"; done || true
 
       - name: Publish screenshots to ci-screenshots branch
         if: always()
