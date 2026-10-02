@@ -9,6 +9,18 @@ struct SundayApp: App {
     @StateObject private var store = MealStore.shared
     @StateObject private var router = AppRouter()
 
+    init() {
+        // Keepsake type: large titles ("Sunday", "What's for dinner?") in New York.
+        let largeTitle = UIFont.preferredFont(forTextStyle: .largeTitle)
+        if let serif = largeTitle.fontDescriptor.withDesign(.serif)?.withSymbolicTraits(.traitBold) {
+            UINavigationBar.appearance().largeTitleTextAttributes = [.font: UIFont(descriptor: serif, size: 0)]
+        }
+        let title = UIFont.preferredFont(forTextStyle: .headline)
+        if let serif = title.fontDescriptor.withDesign(.serif)?.withSymbolicTraits(.traitBold) {
+            UINavigationBar.appearance().titleTextAttributes = [.font: UIFont(descriptor: serif, size: 0)]
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

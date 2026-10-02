@@ -63,37 +63,28 @@ struct MealDetailView: View {
             VStack(alignment: .leading, spacing: 24) {
                 photos
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(meal.displayName)
                         .font(.largeTitle.bold())
+                        .keepsake()
                         .accessibilityAddTraits(.isHeader)
-                    HStack(spacing: 8) {
-                        Text((meal.date ?? .now).dinnerFormatted)
-                        SeasonBadge(season: meal.season)
-                        if let holiday = meal.holiday {
-                            Text(holiday.label)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Color.sundayAccent.opacity(0.15), in: Capsule())
-                                .accessibilityLabel(holiday.name)
-                        }
+                    // One line of facts: when · who · season or holiday.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { metaItems }
+                        VStack(alignment: .leading, spacing: 6) { metaItems }
                     }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    if let cook = meal.cook, !cook.isEmpty {
-                        Label("Cooked by \(cook)", systemImage: "frying.pan")
-                            .font(.subheadline)
-                    }
                     let tags = FoodTags.decode(meal.tags)
                     if !tags.isEmpty {
                         HStack(spacing: 6) {
                             ForEach(tags, id: \.self) { tag in
                                 Text(FoodTags.displayName(tag))
                                     .font(.caption.weight(.medium))
+                                    .foregroundStyle(.secondary)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 3)
-                                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                                    .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
                             }
                         }
                         .accessibilityElement(children: .combine)
@@ -125,6 +116,21 @@ struct MealDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .ignoresSafeArea(edges: .top)
+    }
+
+    @ViewBuilder
+    private var metaItems: some View {
+        Text((meal.date ?? .now).dinnerFormatted)
+        if let cook = meal.cook, !cook.isEmpty {
+            Text("·").accessibilityHidden(true)
+            CookLabel(name: cook, size: 20)
+        }
+        Text("·").accessibilityHidden(true)
+        if let holiday = meal.holiday {
+            Text(holiday.label).accessibilityLabel(holiday.name)
+        } else {
+            Text("\(meal.season.emoji) \(meal.season.displayName)").accessibilityLabel(meal.season.displayName)
+        }
     }
 
     @ToolbarContentBuilder
@@ -183,19 +189,20 @@ struct MealDetailView: View {
         }
     }
 
+    /// The emotional core of the page: set like a quote in a family album.
     private func notesCard(_ notes: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color.sundayAccent)
-                .frame(width: 4)
+        VStack(alignment: .leading, spacing: 4) {
+            Image(systemName: "quote.opening")
+                .font(.title2)
+                .foregroundStyle(Color.sundayAccent.opacity(0.7))
+                .accessibilityHidden(true)
             Text(notes)
-                .font(.body)
+                .font(.title3)
                 .italic()
+                .keepsake()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding()
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .padding(.horizontal)
+        .padding(.horizontal, 24)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Notes: \(notes)")
     }
@@ -211,7 +218,7 @@ struct MealDetailView: View {
                 Circle()
                     .fill(isThis ? Color.sundayAccent : Color.secondary.opacity(0.5))
                     .frame(width: 10, height: 10)
-                    .padding(.top, 5)
+                    .padding(.top, 11)
                 if !isLast {
                     Rectangle()
                         .fill(Color.secondary.opacity(0.3))
@@ -225,6 +232,12 @@ struct MealDetailView: View {
             let layout = typeSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
                 : AnyLayout(HStackLayout(spacing: 8))
+            if let other = store.meal(withID: summary.id) {
+                PhotoThumbnail(photo: other.sortedPhotos.first)
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .accessibilityHidden(true)
+            }
             layout {
                 HStack(spacing: 6) {
                     Text(summary.date.dinnerFormatted)
@@ -259,25 +272,20 @@ struct MealDetailView: View {
 
     private func history(_ dish: Dish) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Every time we've had this")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
+            Text("Every time we've had this")
+                .font(.title3.weight(.semibold))
+                .keepsake()
+                .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 6) {
+                Text("\(dish.timesEaten) dinners since \(dish.meals.last?.date.formatted(.dateTime.month(.abbreviated).year()) ?? "")")
                 if let average = dish.averageStars {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Your average")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        StarsLabel(stars: average, size: 13)
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Your average, \(starsDescription(average))")
+                    Text("·").accessibilityHidden(true)
+                    Text("your average")
+                    CompactStars(stars: average)
                 }
             }
-            Text("\(dish.timesEaten) dinners · first on \(dish.meals.last?.date.dinnerFormatted ?? "")")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(dish.meals.enumerated()), id: \.element.id) { index, summary in
                     timelineRow(summary, isLast: index == dish.meals.count - 1)

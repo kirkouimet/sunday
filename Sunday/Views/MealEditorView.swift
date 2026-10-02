@@ -29,6 +29,7 @@ struct MealEditorView: View {
     /// already posted for the same day, instead of creating a duplicate.
     @State private var joinedMeal: Meal?
     @State private var dismissedSameDayPrompt = false
+    @State private var isTypingNewCook = false
     @FocusState private var focusedField: Field?
 
     private enum Field { case name, cook, notes }
@@ -66,15 +67,6 @@ struct MealEditorView: View {
         Suggestions(meals: otherMeals).dish(named: draft.name)
     }
 
-    private var pastCooks: [String] {
-        var seen = Set<String>()
-        return allMeals.compactMap { $0.cook?.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
-            .filter { $0.caseInsensitiveCompare(draft.cook) != .orderedSame }
-            .prefix(4)
-            .map { $0 }
-    }
-
     var body: some View {
         NavigationStack {
             Form {
@@ -88,10 +80,13 @@ struct MealEditorView: View {
                     }
                 }
                 photosSection
-                dinnerSection
+                nameSection
                 starsSection
+                detailsSection
             }
-            .navigationTitle(isEditing ? "Edit dinner" : joinedMeal != nil ? "Add to dinner" : "New dinner")
+            .navigationTitle(isEditing ? "Edit dinner"
+                             : joinedMeal != nil ? "Add to dinner"
+                             : draft.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -193,12 +188,13 @@ struct MealEditorView: View {
     /// With no photo yet, adding one is the first thing to do; make it big.
     private var emptyPhotoTile: some View {
         VStack(spacing: 14) {
-            Image(systemName: "fork.knife.circle.fill")
-                .font(.system(size: 40))
+            Image(systemName: "camera.macro")
+                .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(Color.sundayAccent)
                 .accessibilityHidden(true)
-            Text("Add a photo of dinner")
-                .font(.headline)
+            Text("Start with a photo")
+                .font(.title3.weight(.semibold))
+                .keepsake()
             HStack(spacing: 12) {
                 if CameraPicker.isAvailable {
                     Button {
@@ -207,26 +203,30 @@ struct MealEditorView: View {
                         Label("Camera", systemImage: "camera.fill")
                     }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                 }
                 PhotosPicker(selection: $pickerItems, maxSelectionCount: 10, matching: .images) {
                     Label("Library", systemImage: "photo.on.rectangle")
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 170)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.sundayAccent.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+        .frame(maxWidth: .infinity, minHeight: 190)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.sundayAccent.opacity(0.25), lineWidth: 1)
         )
-        .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
         .listRowBackground(Color.clear)
     }
 
-    private var dinnerSection: some View {
+    private var nameSection: some View {
         Section {
             TextField("Name this dinner", text: $draft.name)
-                .font(.title3)
+                .font(.title2.weight(.semibold))
+                .keepsake()
                 .focused($focusedField, equals: .name)
                 .submitLabel(.done)
                 .onSubmit { if canSave { save() } }
@@ -239,19 +239,78 @@ struct MealEditorView: View {
             }
 
             dishHistoryLine
+        }
+    }
 
+    /// Known cooks (from past dinners and the family share) as tappable
+    /// people, with "Someone else" for a new name.
+    private var cookChoices: [String] {
+        var seen = Set<String>()
+        let participants = (store.share?.participants ?? []).compactMap { participant -> String? in
+            guard let components = participant.userIdentity.nameComponents else { return nil }
+            let name = components.formatted(.name(style: .short))
+            return name.isEmpty ? nil : name
+        }
+        return (allMeals.compactMap { $0.cook?.trimmingCharacters(in: .whitespaces) } + participants)
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    private var detailsSection: some View {
+        Section {
             DatePicker("When", selection: $draft.date, in: ...Date.now.addingTimeInterval(86_400), displayedComponents: [.date])
                 .disabled(joinedMeal != nil)
 
-            TextField("Cooked by", text: $draft.cook)
-                .focused($focusedField, equals: .cook)
-                .textInputAutocapitalization(.words)
-            if !pastCooks.isEmpty, focusedField == .cook || draft.cook.isEmpty {
-                chipRow(pastCooks) { cook in
-                    draft.cook = cook
-                    focusedField = nil
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Cooked by")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(cookChoices, id: \.self) { cook in
+                            let selected = draft.cook.caseInsensitiveCompare(cook) == .orderedSame
+                            Button {
+                                draft.cook = selected ? "" : cook
+                                isTypingNewCook = false
+                            } label: {
+                                HStack(spacing: 6) {
+                                    CookAvatar(name: cook, size: 22)
+                                    Text(cook).lineLimit(1)
+                                }
+                                .padding(.leading, 4)
+                                .padding(.trailing, 10)
+                                .padding(.vertical, 5)
+                                .background(selected ? Color.sundayAccent.opacity(0.18) : Color.secondary.opacity(0.1), in: Capsule())
+                                .overlay(Capsule().strokeBorder(selected ? Color.sundayAccent : .clear, lineWidth: 1.5))
+                                .frame(minHeight: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(cook)
+                            .accessibilityAddTraits(selected ? .isSelected : [])
+                        }
+                        Button {
+                            isTypingNewCook = true
+                            draft.cook = ""
+                            focusedField = .cook
+                        } label: {
+                            Label("Someone else", systemImage: "plus")
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.secondary.opacity(0.1), in: Capsule())
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                if isTypingNewCook || (cookChoices.isEmpty) || (!draft.cook.isEmpty && !cookChoices.contains(where: { $0.caseInsensitiveCompare(draft.cook) == .orderedSame })) {
+                    TextField("Name", text: $draft.cook)
+                        .focused($focusedField, equals: .cook)
+                        .textInputAutocapitalization(.words)
+                        .textFieldStyle(.roundedBorder)
                 }
             }
+            .padding(.vertical, 4)
 
             TextField("Who was there? Anything to remember?", text: $draft.notes, axis: .vertical)
                 .focused($focusedField, equals: .notes)
@@ -295,30 +354,45 @@ struct MealEditorView: View {
 
     private func sameDayPrompt(_ other: Meal) -> some View {
         Section {
-            HStack(spacing: 12) {
-                PhotoThumbnail(photo: other.sortedPhotos.first)
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Calendar.current.isDateInToday(other.date ?? .distantPast)
-                         ? "Tonight's dinner is already posted" : "A dinner is already posted for this day")
-                        .font(.subheadline.weight(.semibold))
-                    Text(other.displayName)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    PhotoThumbnail(photo: other.sortedPhotos.first)
+                        .frame(width: 40, height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(Calendar.current.isDateInToday(other.date ?? .distantPast)
+                             ? "Already posted tonight" : "Already posted that day")
+                            .font(.subheadline.weight(.semibold))
+                        Text(other.displayName)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { sameDayButtons(other) }
+                    VStack(spacing: 8) { sameDayButtons(other) }
                 }
             }
-            .accessibilityElement(children: .combine)
-            Button {
-                join(other)
-            } label: {
-                Label("Add my photos to it", systemImage: "photo.badge.plus")
-            }
-            Button("This is a different dinner") {
-                withAnimation { dismissedSameDayPrompt = true }
-            }
-            .foregroundStyle(.secondary)
+            .padding(.vertical, 4)
         }
+    }
+
+    @ViewBuilder
+    private func sameDayButtons(_ other: Meal) -> some View {
+        Button {
+            join(other)
+        } label: {
+            Text("Add my photos").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        Button {
+            withAnimation { dismissedSameDayPrompt = true }
+        } label: {
+            Text("It's a different dinner").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
     }
 
     /// Switch from "new dinner" to adding into an existing one: keep its

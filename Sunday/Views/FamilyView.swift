@@ -24,6 +24,7 @@ struct FamilyView: View {
             Form {
                 if !meals.isEmpty {
                     statsHero
+                    funStats
                 }
                 accountWarning
                 familySection
@@ -63,7 +64,7 @@ struct FamilyView: View {
         return Section {
             VStack(spacing: 6) {
                 Text("\(meals.count)")
-                    .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .font(.system(size: 64, weight: .bold, design: .serif))
                     .foregroundStyle(Color.sundayAccent)
                     .contentTransition(.numericText())
                 Text(meals.count == 1 ? "dinner together" : "dinners together")
@@ -74,15 +75,104 @@ struct FamilyView: View {
                         .foregroundStyle(.secondary)
                 }
                 if streak >= 2 {
-                    Label("\(streak) Sundays in a row", systemImage: "flame.fill")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Color.sundayAccent)
-                        .padding(.top, 4)
+                    HStack(spacing: 5) {
+                        Image(systemName: "flame.fill")
+                        Text("\(streak) Sundays in a row")
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.sundayAccent)
+                    .padding(.top, 4)
                 }
+                memberRow
+                    .padding(.top, 10)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// Everyone at the table: family members from the share (or the cooks
+    /// we know), plus a spot for whoever is next.
+    private var members: [String] {
+        var seen = Set<String>()
+        let fromShare = (store.share?.participants ?? []).compactMap { participant -> String? in
+            guard participant.acceptanceStatus == .accepted || participant.role == .owner,
+                  let components = participant.userIdentity.nameComponents else { return nil }
+            let name = components.formatted(.name(style: .short))
+            return name.isEmpty ? nil : name
+        }
+        let cooks = meals.compactMap { $0.cook?.trimmingCharacters(in: .whitespaces) }
+        return (fromShare + cooks).filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }.prefix(6).map { $0 }
+    }
+
+    private var memberRow: some View {
+        HStack(spacing: -6) {
+            ForEach(members, id: \.self) { name in
+                CookAvatar(name: name, size: 36)
+                    .overlay(Circle().strokeBorder(Color(.secondarySystemGroupedBackground), lineWidth: 2))
+            }
+            if store.role != .participant {
+                Button {
+                    openSharing()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: 36, height: 36)
+                        .background(Color.secondary.opacity(0.15), in: Circle())
+                        .overlay(Circle().strokeBorder(Color(.secondarySystemGroupedBackground), lineWidth: 2))
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 12)
+                .accessibilityLabel("Invite family")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Family: \(members.joined(separator: ", "))")
+    }
+
+    /// Little superlatives that make this tab a keepsake, not settings.
+    @ViewBuilder
+    private var funStats: some View {
+        let dishes = Suggestions.group(meals.compactMap { m -> MealSummary? in
+            guard let id = m.id, let date = m.date else { return nil }
+            return MealSummary(id: id, name: m.displayName, date: date, stars: nil)
+        })
+        let mostMade = dishes.max { $0.timesEaten < $1.timesEaten }
+        let cookCounts = Dictionary(grouping: meals.compactMap { $0.cook?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }) { $0.lowercased() }
+        let topCook = cookCounts.max { $0.value.count < $1.value.count }
+        let first = meals.last
+        Section {
+            if let mostMade, mostMade.timesEaten > 1 {
+                LabeledContent("Most made") {
+                    Text("\(mostMade.displayName) · \(mostMade.timesEaten)×").keepsake()
+                }
+            }
+            if let topCook, let name = topCook.value.first {
+                LabeledContent("Head chef") {
+                    HStack(spacing: 6) {
+                        CookAvatar(name: name, size: 20)
+                        Text("\(name) · \(topCook.value.count) dinners")
+                    }
+                }
+            }
+            if let first, let date = first.date {
+                NavigationLink {
+                    MealDetailView(meal: first)
+                } label: {
+                    HStack(spacing: 12) {
+                        PhotoThumbnail(photo: first.sortedPhotos.first)
+                            .frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Where it started").font(.subheadline.weight(.semibold))
+                            Text("\(first.displayName), \(date.formatted(.dateTime.month(.abbreviated).day().year()))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -101,7 +191,7 @@ struct FamilyView: View {
         Section {
             switch store.role {
             case .solo:
-                Text("Your dinners are saved to your iCloud. Invite your family so everyone can add photos and see the history.")
+                Text("Invite your family so everyone can add photos and see the history.")
                     .font(.subheadline)
             case .owner:
                 LabeledContent("Family", value: familyMembersSummary)
@@ -135,7 +225,7 @@ struct FamilyView: View {
         } header: {
             Text("Family sharing")
         } footer: {
-            Text("Everyone you invite can see and add dinners, photos and notes. Star ratings are always private and stay in your own iCloud.")
+            Text("Star ratings are always private and stay in your own iCloud.")
         }
     }
 

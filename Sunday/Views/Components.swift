@@ -39,6 +39,7 @@ func starsDescription(_ stars: Double) -> String {
 struct StarRatingView: View {
     @Binding var stars: Int
     @ScaledMetric private var scaledSize: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(stars: Binding<Int>, size: CGFloat = 28) {
         _stars = stars
@@ -54,13 +55,14 @@ struct StarRatingView: View {
                     Image(systemName: value <= stars ? "star.fill" : "star")
                         .font(.system(size: scaledSize))
                         .foregroundStyle(value <= stars ? AnyShapeStyle(Color.star) : AnyShapeStyle(.tertiary))
+                        .symbolEffect(.bounce, value: reduceMotion ? 0 : (value <= stars ? stars : 0))
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .sensoryFeedback(.selection, trigger: stars)
+        .sensoryFeedback(trigger: stars) { _, new in new == 5 ? .success : .selection }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Your stars")
         .accessibilityValue(stars == 0 ? "Not rated" : starsDescription(Double(stars)))
@@ -237,5 +239,72 @@ enum PhotoCache {
 extension Date {
     var dinnerFormatted: String {
         formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
+    }
+}
+
+// MARK: Keepsake type & people
+
+extension View {
+    /// Serif (New York) for the things a family would put in an album:
+    /// dish names, big titles, the dinners-together number.
+    func keepsake() -> some View { fontDesign(.serif) }
+}
+
+/// A person as an initial on a warm tinted circle. The tint is derived from
+/// the name, so "Mom" is always the same color on every device.
+struct CookAvatar: View {
+    let name: String
+    var size: CGFloat = 22
+
+    private static let tints: [Color] = [
+        Color(red: 0.84, green: 0.45, blue: 0.27), Color(red: 0.36, green: 0.55, blue: 0.42),
+        Color(red: 0.38, green: 0.47, blue: 0.70), Color(red: 0.66, green: 0.42, blue: 0.62),
+        Color(red: 0.75, green: 0.58, blue: 0.22), Color(red: 0.31, green: 0.58, blue: 0.62),
+    ]
+
+    private var tint: Color {
+        let sum = name.lowercased().unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return Self.tints[abs(sum) % Self.tints.count]
+    }
+
+    private var initial: String {
+        name.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } ?? "?"
+    }
+
+    var body: some View {
+        Text(initial)
+            .font(.system(size: size * 0.48, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(tint, in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
+/// "[M] Mom" — avatar plus name.
+struct CookLabel: View {
+    let name: String
+    var size: CGFloat = 20
+
+    var body: some View {
+        HStack(spacing: 6) {
+            CookAvatar(name: name, size: size)
+            Text(name)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Cooked by \(name)")
+    }
+}
+
+/// Small "Rate" capsule for dinners you haven't rated yet.
+struct RatePrompt: View {
+    var body: some View {
+        Label("Rate", systemImage: "star")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.sundayAccent)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .overlay(Capsule().strokeBorder(Color.sundayAccent.opacity(0.5), lineWidth: 1))
+            .accessibilityLabel("Not rated yet")
     }
 }
