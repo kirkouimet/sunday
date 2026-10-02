@@ -12,6 +12,7 @@ struct SundayApp: App {
                 .environment(\.managedObjectContext, store.context)
                 .environmentObject(store)
                 .tint(.sundayAccent)
+                .preferredColorScheme(UITestOptions.colorScheme)
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -72,6 +73,12 @@ struct MilestoneView: View {
         .padding(32)
         .onAppear { if !reduceMotion { bounce.toggle() } }
         .sensoryFeedback(.success, trigger: bounce)
+    }
+}
+
+enum UITestOptions {
+    static var colorScheme: ColorScheme? {
+        ProcessInfo.processInfo.arguments.contains("-uiDarkMode") ? .dark : nil
     }
 }
 

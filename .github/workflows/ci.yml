@@ -26,3 +26,46 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -quiet \
             CODE_SIGNING_ALLOWED=NO
+
+  screenshots:
+    runs-on: macos-15
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j \
+            | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; \
+          c=[x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone') and 'Pro' in x['name'] and 'Max' not in x['name']]; \
+          c=c or [x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')]; print(c[-1]['udid'])")
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices | grep "$UDID"
+
+      - name: Capture screenshots
+        env:
+          TEST_RUNNER_SCREENSHOT_DIR: ${{ github.workspace }}/screenshots
+        run: |
+          mkdir -p screenshots
+          xcodebuild test \
+            -project Sunday.xcodeproj \
+            -scheme Sunday \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath Screenshots.xcresult \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO
+          ls -la screenshots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/*.png
+          if-no-files-found: warn

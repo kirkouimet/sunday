@@ -13,7 +13,9 @@ import os
 /// owners and participants alike.
 final class PersistenceController {
     static let cloudKitContainerID = "iCloud.com.kirkouimet.sunday"
-    static let shared = PersistenceController()
+    /// UI tests (and screenshot runs) get an in-memory store full of sample dinners.
+    static let isUITesting = ProcessInfo.processInfo.arguments.contains("-uiTesting")
+    static let shared = isUITesting ? preview : PersistenceController()
 
     static let preview: PersistenceController = {
         let controller = PersistenceController(inMemory: true)

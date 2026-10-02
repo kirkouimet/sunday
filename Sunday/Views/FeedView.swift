@@ -202,6 +202,7 @@ struct MealCard: View {
                 summary
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("mealCard")
 
             if invitesRating {
                 Divider().padding(.horizontal, 14)

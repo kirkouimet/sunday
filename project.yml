@@ -56,12 +56,27 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: true
+  SundayUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: SundayUITests
+    dependencies:
+      - target: Sunday
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kirkouimet.sunday.uitests
+        GENERATE_INFOPLIST_FILE: true
+        CODE_SIGN_STYLE: Automatic
 schemes:
   Sunday:
     build:
       targets:
         Sunday: all
+        SundayUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
+      targets:
+        - SundayUITests
