@@ -358,3 +358,21 @@ final class TimeAgoTests: XCTestCase {
         XCTAssertEqual(SundayCalendar.timeAgo(days: 800), "2 years ago")
     }
 }
+
+final class FoodTagsTests: XCTestCase {
+    func testKeepsOnlyConfidentFoodLabels() {
+        let tags = FoodTags.tags(from: [
+            ("table", 0.9), ("child", 0.8), ("pasta", 0.7), ("salad", 0.4),
+            ("pizza", 0.2), ("food", 0.95), ("pasta", 0.6),
+        ])
+        XCTAssertEqual(tags, ["pasta", "salad"])
+    }
+
+    func testLimitAndRoundTrip() {
+        let tags = FoodTags.tags(from: [("soup", 0.9), ("bread", 0.8), ("cheese", 0.7), ("salad", 0.6)], limit: 3)
+        XCTAssertEqual(tags, ["soup", "bread", "cheese"])
+        XCTAssertEqual(FoodTags.decode(FoodTags.encode(tags)), tags)
+        XCTAssertEqual(FoodTags.decode(nil), [])
+        XCTAssertEqual(FoodTags.displayName("ice_cream"), "Ice cream")
+    }
+}

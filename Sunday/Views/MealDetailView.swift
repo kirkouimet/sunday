@@ -85,6 +85,20 @@ struct MealDetailView: View {
                         Label("Cooked by \(cook)", systemImage: "frying.pan")
                             .font(.subheadline)
                     }
+                    let tags = FoodTags.decode(meal.tags)
+                    if !tags.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(tags, id: \.self) { tag in
+                                Text(FoodTags.displayName(tag))
+                                    .font(.caption.weight(.medium))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Tags: \(tags.map(FoodTags.displayName).joined(separator: ", "))")
+                    }
                 }
                 .padding(.horizontal)
 

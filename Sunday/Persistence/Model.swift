@@ -11,6 +11,8 @@ final class Meal: NSManagedObject, Identifiable {
     @NSManaged var date: Date?
     @NSManaged var cook: String?
     @NSManaged var notes: String?
+    /// On-device food tags from the first photo, e.g. "pasta,salad".
+    @NSManaged var tags: String?
     @NSManaged var createdAt: Date?
     @NSManaged var photos: NSSet?
 
@@ -103,6 +105,7 @@ enum SundayModel {
             attribute("date", .dateAttributeType),
             attribute("cook", .stringAttributeType),
             attribute("notes", .stringAttributeType),
+            attribute("tags", .stringAttributeType),
             attribute("createdAt", .dateAttributeType),
             mealPhotos,
         ])

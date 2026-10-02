@@ -25,7 +25,8 @@ struct FeedView: View {
         return meals.filter { meal in
             if let seasonFilter, meal.season != seasonFilter { return false }
             guard !query.isEmpty else { return true }
-            let haystack = MealName.normalize([meal.name, meal.cook, meal.notes].compactMap { $0 }.joined(separator: " "))
+            let tags = FoodTags.decode(meal.tags).map(FoodTags.displayName)
+            let haystack = MealName.normalize(([meal.name, meal.cook, meal.notes].compactMap { $0 } + tags).joined(separator: " "))
             return haystack.contains(query)
         }
     }

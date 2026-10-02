@@ -12,13 +12,14 @@ enum PreviewData {
         let symbol: String
         let colors: (UIColor, UIColor)
         var photoCount = 1
+        var tags: [String] = []
     }
 
     private static let dinners: [Dinner] = [
         Dinner(name: "Lemon chicken & roasted potatoes", weeksAgo: 0, stars: nil, notes: "Grandma came over.",
-               symbol: "fork.knife", colors: (.systemOrange, .systemYellow), photoCount: 3),
+               symbol: "fork.knife", colors: (.systemOrange, .systemYellow), photoCount: 3, tags: ["chicken", "potato"]),
         Dinner(name: "Butternut squash soup", weeksAgo: 1, stars: 4, notes: "",
-               symbol: "cup.and.saucer.fill", colors: (.systemOrange, .systemBrown)),
+               symbol: "cup.and.saucer.fill", colors: (.systemOrange, .systemBrown), tags: ["soup"]),
         Dinner(name: "Homemade pizza night", weeksAgo: 2, stars: 5, notes: "Kids made their own.",
                symbol: "flame.fill", colors: (.systemRed, .systemOrange), photoCount: 2),
         Dinner(name: "Salmon with rice", weeksAgo: 3, stars: 4, notes: "",
@@ -51,6 +52,7 @@ enum PreviewData {
             meal.cook = "Mom"
             meal.notes = dinner.notes
             meal.createdAt = date
+            meal.tags = dinner.tags.isEmpty ? nil : FoodTags.encode(dinner.tags)
 
             for index in 0..<dinner.photoCount {
                 let image = illustration(symbol: dinner.symbol, colors: dinner.colors, variant: index)

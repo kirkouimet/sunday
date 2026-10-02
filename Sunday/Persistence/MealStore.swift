@@ -114,6 +114,15 @@ final class MealStore: ObservableObject {
             prepared[draftPhoto.id] = await ImageProcessing.prepareAsync(draftPhoto.image)
         }
 
+        // Tag the dinner from its first new photo (on-device Vision), unless
+        // it already has tags.
+        var foodTags: [String]?
+        if (existing?.tags ?? "").isEmpty,
+           let first = draft.photos.first(where: { $0.existing == nil }),
+           let full = prepared[first.id]?.full {
+            foodTags = await FoodTagger.tags(forJPEG: full)
+        }
+
         if let existing, existing.isGone { throw SaveError.deletedElsewhere }
 
         let isNew = existing == nil
@@ -129,6 +138,7 @@ final class MealStore: ObservableObject {
         meal.date = draft.date
         meal.cook = draft.cook.trimmingCharacters(in: .whitespacesAndNewlines)
         meal.notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let foodTags, !foodTags.isEmpty { meal.tags = FoodTags.encode(foodTags) }
 
         // Photos: drop removed ones, re-order kept ones, add new ones.
         let keptIDs = Set(draft.photos.compactMap { $0.existing?.objectID })
