@@ -20,6 +20,8 @@ final class Meal: NSManagedObject, Identifiable {
     /// Planned ahead ("Make it Sunday") and not yet confirmed as eaten.
     /// Plans don't count as history until a photo or a "yes, we had it".
     @NSManaged var isPlan: Bool
+    /// The cook telling the recipe in their own voice (AAC).
+    @NSManaged var recipeAudio: Data?
     @NSManaged var createdAt: Date?
     @NSManaged var photos: NSSet?
 
@@ -116,6 +118,7 @@ enum SundayModel {
             attribute("attendees", .stringAttributeType),
             attribute("recipe", .stringAttributeType),
             attribute("isPlan", .booleanAttributeType, default: false),
+            attribute("recipeAudio", .binaryDataAttributeType, externalStorage: true),
             attribute("createdAt", .dateAttributeType),
             mealPhotos,
         ])

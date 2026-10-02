@@ -30,9 +30,13 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
     /// This Sunday's plan ("Chili"), and who's cooking it, for the Lock Screen.
     public var plan: Item?
     public var planCook: String?
+    /// Last Sunday's dinner, while you haven't rated it: the widget asks
+    /// "How was Chili?" with five tappable stars.
+    public var toRate: Item?
 
     public init(latest: Item?, memories: [Item], recentDates: [Date], totalDinners: Int,
-                generatedAt: Date = .now, plan: Item? = nil, planCook: String? = nil) {
+                generatedAt: Date = .now, plan: Item? = nil, planCook: String? = nil, toRate: Item? = nil) {
+        self.toRate = toRate
         self.latest = latest
         self.memories = memories
         self.recentDates = recentDates
@@ -149,6 +153,13 @@ public enum DeepLink {
 
     public static func url(forMeal id: UUID) -> URL {
         URL(string: "\(scheme)://meal/\(id.uuidString)")!
+    }
+
+    /// Opens the camera for tonight's dinner.
+    public static let snap = URL(string: "sunday://snap")!
+
+    public static func isSnap(_ url: URL) -> Bool {
+        url.scheme == scheme && url.host == "snap"
     }
 
     public static func mealID(from url: URL) -> UUID? {

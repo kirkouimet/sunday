@@ -20,6 +20,10 @@ struct MealDetailView: View {
     @State private var isConfirmingDelete = false
     @State private var isWritingRecipe = false
     @State private var recipeText = ""
+    @State private var recipeAudio: Data?
+    @State private var isRecipeExpanded = false
+    @State private var hadStarsOnOpen = true
+    @StateObject private var voice = VoiceMemo()
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private var dish: Dish? {
@@ -47,6 +51,10 @@ struct MealDetailView: View {
         }
         .sheet(isPresented: $isWritingRecipe) {
             NavigationStack {
+                VStack(spacing: 0) {
+                    voiceRecorderRow
+                        .padding()
+                    Divider()
                 TextEditor(text: $recipeText)
                     .font(.body)
                     .padding(.horizontal)
@@ -59,6 +67,7 @@ struct MealDetailView: View {
                                 .allowsHitTesting(false)
                         }
                     }
+                }
                     .navigationTitle("How we make \(meal.displayName)")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
@@ -67,7 +76,9 @@ struct MealDetailView: View {
                         }
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Save") {
-                                store.setRecipe(recipeText, for: recipeSource ?? meal)
+                                if voice.isRecording { voice.stopRecording() }
+                                store.setRecipe(recipeText, audio: voice.recorded ?? recipeAudio, for: recipeSource ?? meal)
+                                voice.discardRecording()
                                 isWritingRecipe = false
                             }
                             .bold()
@@ -81,7 +92,10 @@ struct MealDetailView: View {
                 store.delete(meal)
             }
         }
-        .onAppear { stars = store.stars(for: meal) }
+        .onAppear {
+            stars = store.stars(for: meal)
+            hadStarsOnOpen = stars > 0
+        }
         .onChange(of: isEditing) { _, editing in
             if !editing { stars = store.stars(for: meal) }
         }
@@ -126,6 +140,11 @@ struct MealDetailView: View {
                 }
                 .padding(.horizontal)
 
+                // Unrated? Your stars come first, right under the facts.
+                if !hadStarsOnOpen {
+                    yourStars
+                }
+
                 if let notes = meal.notes, !notes.isEmpty {
                     notesCard(notes)
                 }
@@ -134,7 +153,23 @@ struct MealDetailView: View {
 
                 recipeCard
 
-                VStack(alignment: .leading, spacing: 8) {
+                if hadStarsOnOpen {
+                    yourStars
+                }
+
+                if let dish, dish.timesEaten > 1 {
+                    history(dish)
+                }
+            }
+            .padding(.bottom, 32)
+            .frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)
+        }
+        .ignoresSafeArea(edges: .top)
+    }
+
+    private var yourStars: some View {
+        VStack(alignment: .leading, spacing: 8) {
                     Text("Your stars")
                         .font(.headline)
                     StarRatingView(stars: $stars, size: 28)
@@ -150,16 +185,6 @@ struct MealDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal)
-
-                if let dish, dish.timesEaten > 1 {
-                    history(dish)
-                }
-            }
-            .padding(.bottom, 32)
-            .frame(maxWidth: 720)
-            .frame(maxWidth: .infinity)
-        }
-        .ignoresSafeArea(edges: .top)
     }
 
     /// Faces of who was there, and the moment it marks ("First Sunday with June").
@@ -173,10 +198,15 @@ struct MealDetailView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(people, id: \.self) { person in
-                            VStack(spacing: 4) {
-                                CookAvatar(name: person, size: 40)
-                                Text(person).font(.caption).lineLimit(1)
+                            NavigationLink(value: PersonRoute(name: person)) {
+                                VStack(spacing: 4) {
+                                    CookAvatar(name: person, size: 40)
+                                    Text(person).font(.caption).lineLimit(1)
+                                }
+                                .frame(width: 64)
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(person)
                         }
                     }
                 }
@@ -187,10 +217,21 @@ struct MealDetailView: View {
                     Label(moment, systemImage: "sparkles")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.sundayAccent)
+                    if moment.hasPrefix("First Sunday with "), store.canEdit(meal) {
+                        let guest = String(moment.dropFirst("First Sunday with ".count))
+                        Button {
+                            recipeText = ""
+                            recipeAudio = nil
+                            isWritingRecipe = true
+                        } label: {
+                            Label("Ask \(guest) how they make something", systemImage: "mic")
+                                .font(.subheadline)
+                        }
+                    }
                 }
             }
             .padding(.horizontal)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
         }
     }
 
@@ -199,30 +240,59 @@ struct MealDetailView: View {
     @ViewBuilder
     private var recipeCard: some View {
         let familyRecipe = recipeSource
-        if let familyRecipe, let text = familyRecipe.recipe {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("How we make it")
-                        .font(.title3.weight(.semibold))
-                        .keepsake()
-                    Spacer()
+        if let familyRecipe, familyRecipe.recipe != nil || familyRecipe.recipeAudio != nil {
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    withAnimation(.snappy) { isRecipeExpanded.toggle() }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("How we make it")
+                                .font(.title3.weight(.semibold))
+                                .keepsake()
+                            if let cook = familyRecipe.cook, !cook.isEmpty {
+                                Text("\(cook)'s way")
+                                    .font(.subheadline)
+                                    .italic()
+                                    .keepsake()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .rotationEffect(.degrees(isRecipeExpanded ? 180 : 0))
+                            .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(isRecipeExpanded ? "Collapses the recipe" : "Shows the recipe")
+
+                if let audio = familyRecipe.recipeAudio {
+                    Button {
+                        voice.isPlaying ? voice.stop() : voice.play(audio)
+                    } label: {
+                        Label(voice.isPlaying ? "Stop" : "Hear \(familyRecipe.cook.flatMap { $0.isEmpty ? nil : $0 } ?? "them") tell it",
+                              systemImage: voice.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                            .font(.headline)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                if isRecipeExpanded {
+                    if let text = familyRecipe.recipe {
+                        Text(text)
+                            .font(.body)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     if store.canEdit(familyRecipe) {
-                        Button("Edit") {
-                            recipeText = text
+                        Button("Edit recipe") {
+                            recipeText = familyRecipe.recipe ?? ""
+                            recipeAudio = familyRecipe.recipeAudio
                             isWritingRecipe = true
                         }
                         .font(.subheadline)
                     }
-                }
-                Text(text)
-                    .font(.body)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if let cook = familyRecipe.cook, !cook.isEmpty {
-                    Text("— \(cook)'s way")
-                        .font(.subheadline)
-                        .italic()
-                        .keepsake()
-                        .foregroundStyle(.secondary)
                 }
             }
             .padding()
@@ -250,11 +320,45 @@ struct MealDetailView: View {
         }
     }
 
+    /// "Tell it in your own words": a voice memo is the heirloom.
+    private var voiceRecorderRow: some View {
+        HStack(spacing: 12) {
+            Button {
+                if voice.isRecording {
+                    voice.stopRecording()
+                } else {
+                    Task { await voice.startRecording() }
+                }
+            } label: {
+                Label(voice.isRecording ? "Stop" : (voice.recorded ?? recipeAudio) == nil ? "Record it out loud" : "Record again",
+                      systemImage: voice.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                    .font(.headline)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(voice.isRecording ? .red : Color.sundayAccent)
+            if voice.isRecording {
+                Text(Duration.seconds(voice.elapsed).formatted(.time(pattern: .minuteSecond)))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            } else if let audio = voice.recorded ?? recipeAudio {
+                Button {
+                    voice.isPlaying ? voice.stop() : voice.play(audio)
+                } label: {
+                    Image(systemName: voice.isPlaying ? "stop.fill" : "play.fill")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel(voice.isPlaying ? "Stop" : "Play recording")
+            }
+            Spacer()
+        }
+    }
+
     /// The newest dinner of this dish that has a recipe written down.
     private var recipeSource: Meal? {
         let key = MealName.normalize(meal.displayName)
-        if meal.recipe?.isEmpty == false { return meal }
-        return allMeals.first { MealName.normalize($0.displayName) == key && $0.recipe?.isEmpty == false }
+        func hasRecipe(_ m: Meal) -> Bool { m.recipe?.isEmpty == false || m.recipeAudio != nil }
+        if hasRecipe(meal) { return meal }
+        return allMeals.first { MealName.normalize($0.displayName) == key && hasRecipe($0) }
     }
 
     @ViewBuilder

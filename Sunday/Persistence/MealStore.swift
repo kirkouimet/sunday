@@ -214,11 +214,24 @@ final class MealStore: ObservableObject {
         }
     }
 
-    func setRecipe(_ recipe: String, for meal: Meal) {
+    func setRecipe(_ recipe: String, audio: Data?, for meal: Meal) {
         guard !meal.isGone else { return }
         let trimmed = recipe.trimmingCharacters(in: .whitespacesAndNewlines)
         meal.recipe = trimmed.isEmpty ? nil : trimmed
+        meal.recipeAudio = audio
         saveQuietly()
+    }
+
+    /// Ratings tapped on a widget, saved as your private ratings.
+    func applyWidgetRatings() {
+        guard !PersistenceController.isUITesting else { return }
+        var applied = false
+        PendingRatings.drain { entry in
+            guard let meal = meal(withID: entry.mealID) else { return }
+            setRating(entry.stars, for: meal)
+            applied = true
+        }
+        if applied { WidgetPublisher.publish(store: self) }
     }
 
     /// "Who's cooking?" from the Tonight card.

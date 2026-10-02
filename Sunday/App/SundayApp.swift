@@ -28,6 +28,11 @@ struct SundayApp: App {
                 .environmentObject(store)
                 .environmentObject(router)
                 .onOpenURL { url in
+                    if DeepLink.isSnap(url) {
+                        router.tab = .dinners
+                        router.snapRequested = true
+                        return
+                    }
                     guard let id = DeepLink.mealID(from: url), let meal = store.meal(withID: id) else { return }
                     router.show(meal)
                 }
@@ -36,6 +41,7 @@ struct SundayApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
+            store.applyWidgetRatings()
             store.reconcile()
             WidgetPublisher.publish(store: store)
             Task {
@@ -54,6 +60,8 @@ final class AppRouter: ObservableObject {
 
     @Published var tab: Tab = .dinners
     @Published var feedPath: [NSManagedObjectID] = []
+    /// Set by the widget's "Snap it": open the camera for tonight's dinner.
+    @Published var snapRequested = false
 
     func show(_ meal: Meal) {
         tab = .dinners

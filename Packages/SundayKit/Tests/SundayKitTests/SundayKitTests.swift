@@ -463,3 +463,21 @@ final class PlanLineTests: XCTestCase {
         XCTAssertNil(snapshot.planLine(on: d(5, 9), calendar: calendar))
     }
 }
+
+final class PendingRatingsTests: XCTestCase {
+    func testAddReplaceAndDrain() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let chili = UUID(), soup = UUID()
+        try PendingRatings.add(.init(mealID: chili, stars: 3), to: directory)
+        try PendingRatings.add(.init(mealID: soup, stars: 4), to: directory)
+        try PendingRatings.add(.init(mealID: chili, stars: 5), to: directory)
+        XCTAssertEqual(PendingRatings.stars(for: chili, in: directory), 5)
+        XCTAssertEqual(PendingRatings.read(from: directory).count, 2)
+
+        var applied: [UUID: Int] = [:]
+        PendingRatings.drain(from: directory) { applied[$0.mealID] = $0.stars }
+        XCTAssertEqual(applied, [chili: 5, soup: 4])
+        XCTAssertTrue(PendingRatings.read(from: directory).isEmpty)
+    }
+}

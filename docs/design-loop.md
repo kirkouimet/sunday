@@ -10,6 +10,7 @@ Canvas with screenshots and pinned critiques: claude.ai/design ("Sunday Design R
 | Loop | Maturity | 🚀 | 🧱 | 🎨 | Biggest idea |
 |---|---|---|---|---|---|
 | 0 (baseline) | – | 3 | 6 | 8 | "Tonight" moment; cooks as people; Ideas as a decision tool |
+| 3 | 8/10 | 3 | 3 | 4 | Interactive Lock Screen (rate/snap without opening the app); people as pages; heirloom voice · 3 bugs. Critic: "almost all refinement… screens at marginal gains" |
 | 2 | 7/10 | 3 | 4 | 2 | Who was at the table (attendance); Sunday on the Lock Screen; heirloom recipe card · 5 bugs (mostly wiring of round-1 behaviors) |
 | 1 | 6/10 | 2 (+2 public) | 4 (+2 public) | 4 (+1 public) | "The table remembers" (private insight); Sunday as a ritual (plan the cook ahead) · 3 bugs |
 
@@ -53,3 +54,15 @@ Critique: "the ritual loop exists, but its state machine hides its own best mome
 - 🧱 New-dinner form collapses until "already posted?" is answered; Save can't duplicate.
 - 🐛 Large-text meta without orphan separators; capture harness taps a dedicated hero ID.
 - 🎨 Ideas scrim; holiday emoji off grid tiles; "Sundays logged" for a family of one; cook picker includes share participants.
+
+## Loop 3 → 4 (implemented)
+
+Critique (8/10): "almost all refinement… the screens are at marginal gains. A step-change will come from making the person the primary object, and from moving core actions out of the app so Sunday needs zero app launches."
+
+- 🚀 **Zero-launch Sunday**: interactive widgets. Monday morning the home and Lock Screen widgets ask "How was Chili?" with five tappable stars (AppIntent → App Group queue → saved as your private rating next time the app runs; `PendingRatings`, tested). On Sunday, the Lock Screen plan taps straight into the camera (`sunday://snap`).
+- 🚀 **People as pages**: tapping any face (At the table, Family avatars, Sundays with) opens that person: Sundays at the table, first Sunday, what they cook, their recipes, a grid of their dinners.
+- 🚀 **Heirloom voice**: the recipe sheet records the cook telling it (≤90s AAC on the dinner); the recipe card plays "Hear Mom tell it". A first-time guest prompts "Ask Grandma June how they make something".
+- 🧱 Plan card *is* the memory ("A year ago this week · Chili. Again this Sunday?" → Make it Sunday / Other ideas); the separate memory card hides then. Streak moved into the Tonight card.
+- 🐛 The private insight now sits under your stars on the hero card (no longer hijacks the Tonight card, survives relaunch); "Different dinner" + same name offers "Same dinner? Add your photos".
+- 🧱 Detail: unrated stars move under the facts; recipe collapses to "How we make it · Mom's way ›"; fixed-width faces.
+- 🎨 Large text: hero rating stacks, Ideas keeps its title (inline), Ideas words sit below the photo; hero 5:3 under a Tonight card; bottom content margin for the floating tab bar; season chips only after 24+ dinners.

@@ -16,6 +16,13 @@ enum WidgetPublisher {
         let all = (try? store.context.fetch(mealsRequest)) ?? []
         let meals = all.filter { !$0.isPlan }
         let startOfToday = Calendar.current.startOfDay(for: .now)
+        // Last Sunday's dinner, if you haven't rated it yet (for a few days).
+        let lastSunday = SundayCalendar.mostRecentSunday(onOrBefore: .now)
+        let toRate = meals.first { meal in
+            guard let date = meal.date, Calendar.current.isDate(date, inSameDayAs: lastSunday),
+                  Date.now.timeIntervalSince(date) < 4 * 86_400 else { return false }
+            return store.stars(for: meal) == 0
+        }
         let upcomingPlan = all.filter { $0.isPlan && ($0.date ?? .distantPast) >= startOfToday }
             .min { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
 
@@ -47,7 +54,8 @@ enum WidgetPublisher {
             recentDates: Array(meals.compactMap(\.date).prefix(120)),
             totalDinners: meals.count,
             plan: upcomingPlan.flatMap(item(for:)),
-            planCook: upcomingPlan?.cook.flatMap { $0.isEmpty ? nil : $0 }
+            planCook: upcomingPlan?.cook.flatMap { $0.isEmpty ? nil : $0 },
+            toRate: toRate.flatMap(item(for:))
         )
 
         if let lastPublished, lastPublished.hasSameContent(as: snapshot) { return }

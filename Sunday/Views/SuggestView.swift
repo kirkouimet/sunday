@@ -95,12 +95,9 @@ struct SuggestView: View {
                     )
                 }
             }
-            .navigationTitle(typeSize.isAccessibilitySize ? "Ideas" : "What's for dinner?")
-            .navigationDestination(for: NSManagedObjectID.self) { id in
-                if let meal = try? store.context.existingObject(with: id) as? Meal {
-                    MealDetailView(meal: meal)
-                }
-            }
+            .navigationTitle("What's for dinner?")
+            .navigationBarTitleDisplayMode(typeSize.isAccessibilitySize ? .inline : .automatic)
+            .sundayDestinations(store: store)
         }
     }
 
@@ -181,36 +178,30 @@ private struct SurpriseCard: View {
     var body: some View {
         let meal = pick.flatMap { store.meal(withID: $0.latestMealID) }
         VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .bottomLeading) {
-                PhotoThumbnail(photo: meal?.sortedPhotos.first)
-                    .aspectRatio(16 / 10, contentMode: .fit)
-                    .id(pick?.key)
-                    .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
-                                            removal: .move(edge: .leading).combined(with: .opacity)))
-                // A real scrim, so the words never sit on the food.
-                LinearGradient(stops: [.init(color: .clear, location: 0.25),
-                                       .init(color: .black.opacity(0.45), location: 0.6),
-                                       .init(color: .black.opacity(0.8), location: 1)],
-                               startPoint: .top, endPoint: .bottom)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(SundayCalendar.isSunday(.now) ? "Tonight, how about" : "This Sunday, how about")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.85))
-                    Text(pick?.displayName ?? "")
-                        .font(.title.bold())
-                        .keepsake()
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .contentTransition(.opacity)
-                    if let pick {
-                        Text("Last had \(SundayCalendar.timeAgo(days: pick.daysSinceLastEaten(now: .now)).lowercased())")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
+            // Photo on top, words below it: they never fight the food.
+            PhotoThumbnail(photo: meal?.sortedPhotos.first)
+                .aspectRatio(16 / 10, contentMode: .fit)
+                .id(pick?.key)
+                .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                        removal: .move(edge: .leading).combined(with: .opacity)))
+                .clipped()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(SundayCalendar.isSunday(.now) ? "Tonight, how about" : "This Sunday, how about")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.sundayAccent)
+                Text(pick?.displayName ?? "")
+                    .font(.title.bold())
+                    .keepsake()
+                    .lineLimit(3)
+                    .contentTransition(.opacity)
+                if let pick {
+                    Text("Last had \(SundayCalendar.timeAgo(days: pick.daysSinceLastEaten(now: .now)).lowercased())")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .padding(16)
             }
-            .clipped()
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
 
             HStack(spacing: 10) {
                 if let pick {
@@ -218,6 +209,8 @@ private struct SurpriseCard: View {
                         onPlan(pick.displayName)
                     } label: {
                         Text(SundayCalendar.isSunday(.now) ? "Make it tonight" : "Make it Sunday")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)

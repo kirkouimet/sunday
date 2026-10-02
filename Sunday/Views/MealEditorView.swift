@@ -41,7 +41,12 @@ struct MealEditorView: View {
 
     /// A dinner already logged for the draft's day that you could join.
     private var sameDayMeal: Meal? {
-        guard !isEditing, joinedMeal == nil, !dismissedSameDayPrompt else { return nil }
+        guard !dismissedSameDayPrompt else { return nil }
+        return sameDayCandidate
+    }
+
+    private var sameDayCandidate: Meal? {
+        guard !isEditing, joinedMeal == nil else { return nil }
         return allMeals.first { other in
             guard let date = other.date, !other.isGone else { return false }
             return Calendar.current.isDate(date, inSameDayAs: draft.date) && store.canEdit(other)
@@ -393,7 +398,16 @@ struct MealEditorView: View {
     @ViewBuilder
     private var dishHistoryLine: some View {
         let trimmed = draft.name.trimmingCharacters(in: .whitespaces)
-        if let previous = previousTimes {
+        if let same = sameDayCandidate, !trimmed.isEmpty,
+           MealName.normalize(same.displayName) == MealName.normalize(trimmed) {
+            // "Different dinner", then typed the same name: almost certainly the same one.
+            Button {
+                join(same)
+            } label: {
+                Label("Same dinner? Add your photos to it", systemImage: "photo.badge.plus")
+                    .font(.footnote.weight(.semibold))
+            }
+        } else if let previous = previousTimes {
             Label(previous.timesEaten == 1
                   ? "We've had this once before, on \(previous.lastEaten.dinnerFormatted)"
                   : "We've had this \(previous.timesEaten) times, last on \(previous.lastEaten.dinnerFormatted)",

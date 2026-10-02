@@ -113,7 +113,21 @@ struct SundayWidgetView: View {
     /// family phone before anyone opens the app.
     private var lockScreen: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let line = entry.snapshot.planLine(on: entry.date) {
+            if let toRate {
+                let pending = PendingRatings.stars(for: toRate.mealID) ?? 0
+                Text(pending > 0 ? "Saved, just for you" : "How was \(toRate.title)?")
+                    .font(.headline)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    ForEach(1...5, id: \.self) { value in
+                        Button(intent: RateDinnerIntent(mealID: toRate.mealID, stars: value)) {
+                            Image(systemName: value <= pending ? "star.fill" : "star")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .font(.title3)
+            } else if let line = entry.snapshot.planLine(on: entry.date) {
                 Label("Sunday dinner", systemImage: "fork.knife")
                     .font(.caption2.weight(.semibold))
                 Text(line)
@@ -128,7 +142,8 @@ struct SundayWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .widgetURL(URL(string: "sunday://feed"))
+        // On Sunday with a plan, tapping goes straight to the camera.
+        .widgetURL(entry.snapshot.planLine(on: entry.date)?.hasPrefix("Tonight") == true ? DeepLink.snap : URL(string: "sunday://feed"))
     }
 
     private var lockScreenFallback: String {
@@ -153,9 +168,46 @@ struct SundayWidgetView: View {
         }
     }
 
+    /// Monday morning: rate last Sunday's dinner right here.
+    private var toRate: WidgetSnapshot.Item? { entry.snapshot.toRate }
+
+    private func rateRow(_ item: WidgetSnapshot.Item, size: CGFloat) -> some View {
+        let pending = PendingRatings.stars(for: item.mealID) ?? 0
+        return HStack(spacing: 2) {
+            ForEach(1...5, id: \.self) { value in
+                Button(intent: RateDinnerIntent(mealID: item.mealID, stars: value)) {
+                    Image(systemName: value <= pending ? "star.fill" : "star")
+                        .font(.system(size: size))
+                        .foregroundStyle(value <= pending ? Color(red: 1, green: 0.8, blue: 0.25) : .white.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityLabel(pending > 0 ? "Your rating, \(pending) of 5" : "Rate \(item.title)")
+    }
+
+    private func rateTile(_ item: WidgetSnapshot.Item, compact: Bool) -> some View {
+        let pending = PendingRatings.stars(for: item.mealID) ?? 0
+        return ZStack(alignment: .bottomLeading) {
+            DinnerTile(content: TileContent(item: item, caption: ""), compact: compact)
+                .overlay(Color.black.opacity(0.35))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(pending > 0 ? "Saved, just for you" : "How was \(item.title)?")
+                    .font(compact ? .footnote.weight(.semibold) : .headline)
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                rateRow(item, size: compact ? 17 : 22)
+            }
+            .padding(compact ? 10 : 14)
+        }
+        .widgetURL(DeepLink.url(forMeal: item.mealID))
+    }
+
     @ViewBuilder
     private var small: some View {
-        if let tile = memory ?? latest {
+        if let toRate {
+            rateTile(toRate, compact: true)
+        } else if let tile = memory ?? latest {
             DinnerTile(content: tile, compact: true)
                 .widgetURL(DeepLink.url(forMeal: tile.item.mealID))
         } else {
@@ -167,7 +219,9 @@ struct SundayWidgetView: View {
     private var medium: some View {
         let tiles = [latest, memory].compactMap { $0 }
         let streak = entry.snapshot.streak(on: entry.date)
-        if tiles.isEmpty {
+        if let toRate {
+            rateTile(toRate, compact: false)
+        } else if tiles.isEmpty {
             empty
         } else {
             HStack(spacing: 2) {
@@ -212,7 +266,7 @@ struct SundayWidget: Widget {
             SundayWidgetView(entry: entry)
         }
         .configurationDisplayName("Sunday dinner")
-        .description("Last Sunday's dinner, and what you ate this time in years past.")
+        .description("Tonight's plan, last Sunday's dinner to rate, and what you ate this time in years past.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
         .contentMarginsDisabled()
     }

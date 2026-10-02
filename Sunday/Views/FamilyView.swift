@@ -54,6 +54,7 @@ struct FamilyView: View {
                 }
             }
             .navigationTitle("Family")
+            .sundayDestinations(store: store)
             .sheet(item: $sharingShare) { share in
                 CloudSharingView(share: share, container: store.persistence.ckContainer) {
                     store.refreshShare()
@@ -115,8 +116,12 @@ struct FamilyView: View {
     private var memberRow: some View {
         HStack(spacing: -6) {
             ForEach(members, id: \.self) { name in
-                CookAvatar(name: name, size: 36)
-                    .overlay(Circle().strokeBorder(Color(.secondarySystemGroupedBackground), lineWidth: 2))
+                NavigationLink(value: PersonRoute(name: name)) {
+                    CookAvatar(name: name, size: 36)
+                        .overlay(Circle().strokeBorder(Color(.secondarySystemGroupedBackground), lineWidth: 2))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(name)
             }
             if store.role != .participant {
                 Button {
@@ -342,6 +347,7 @@ struct SundaysWithView: View {
 
     var body: some View {
         List(counts, id: \.name) { person in
+            NavigationLink(value: PersonRoute(name: person.name)) {
             HStack(spacing: 12) {
                 CookAvatar(name: person.name, size: 36)
                 Text(person.name).font(.body.weight(.medium))
@@ -351,6 +357,7 @@ struct SundaysWithView: View {
                     .monospacedDigit()
             }
             .accessibilityElement(children: .combine)
+            }
         }
         .navigationTitle("Sundays with")
     }
