@@ -368,7 +368,9 @@ struct MealEditorView: View {
                     try? await Task.sleep(for: .milliseconds(450))
                     isShowingCamera = true
                 }
-            } else {
+            } else if sameDayMeal == nil {
+                // If a dinner is already posted for this day, let them answer
+                // "add to it?" first instead of jumping into the keyboard.
                 focusedField = .name
             }
         }
