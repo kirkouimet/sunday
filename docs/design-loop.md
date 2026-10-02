@@ -10,6 +10,7 @@ Canvas with screenshots and pinned critiques: claude.ai/design ("Sunday Design R
 | Loop | Maturity | 🚀 | 🧱 | 🎨 | Biggest idea |
 |---|---|---|---|---|---|
 | 0 (baseline) | – | 3 | 6 | 8 | "Tonight" moment; cooks as people; Ideas as a decision tool |
+| 10 (final) | 8/10 | – | – | – | **Final verdict**: ready for a closed TestFlight with one family you can watch. **"Leaps on loop 6? Partly"**: the last real leap, only an idea until loops 7–9 made it work |
 | 9 | 8/10 | 0 | 2 | 6 | **The finish pass**: "ready to ship once it is trimmed". Concept count about 22 → about 14 (Ideas had 4 labels, Snap 6, the Live ending 3) · 5 bugs (identity leaks, two live dinners, unnamed start) · 5 ✂️. Critic, looking back: "the curve stopped producing leaps at round 6… every round since has rightly been subtraction and truth-telling" |
 | 8 | 8/10 | 0 | 2 | 2 | **A four-phone rehearsal, walked through the code** (owner, offline phone, unnamed phone, force-quit phone at large text): "a different class of bug from the screenshot reviews… none are layout problems. They are about time and identity" · 7 bugs · 2 ✂️ |
 | 7 | 8/10 | 0 | 3 | 2 | **Is Live multiplayer now? "Mostly yes, at the data layer"**, but "multiplayer for the person who started dinner; everyone else gets eventually consistent" · 7 bugs at the edges where a 2nd/3rd phone joins · 1 ✂️. Critic: "flat part of the curve, and that's the right place to be… if a loop proposes a new screen, the answer should be no" |
@@ -161,3 +162,17 @@ Critique (8/10): "Sunday is ready to ship once it is trimmed. Loop 10 should not
 - 🐛 **Dinner is started by a person**: an unnamed phone asks *Which one are you?* first (otherwise everyone could end it). New owners and joiners are asked once right after the family forms. The picker marks names already "On another phone".
 - 🐛 **"That's dinner" can't be held back**: the 6-second commit has its own timer, so another toast or a tab switch can't hold it. A participant's "checking with the family" waits for the shared store's import specifically.
 - 🎨 With a family, Sunday's card leads with *We're sitting down* (Snap is secondary, since Live has its own); *Ideas* disappears after 3 pm. "Sundays logged" says "dinners" once a Friday birthday is in it (and so does the Book). VoiceOver gets the face actions (*That's not me*, *Not here*); the Live footer clears the tab bar at large text.
+
+## Round 10: the final verdict and the study
+
+Final review (8/10): "Round 0 was a nicely styled log of dinners… Round 10 is a two-tab family ritual with a present tense (Live), a memory (the table remembers, people pages, heirloom voice) and a life outside the app." Ready for a closed TestFlight with one family you can watch, not yet for families on their own. Top risks: multiplayer has only been checked on paper (run one Sunday on 3–4 real iPhones), the CloudKit production schema, "Which one are you?" as a gate (pre-name people in the invite), on-device AI on older phones, inconsistent counts, and only placeholder art.
+
+**Leaps on loop 6?** "Partly: loop 6 brought the last real leap (Sunday Live gave the app a present tense), but it was only an idea until loops 7–9 made it work, and no further leaps came after it, only subtraction and making the features actually work."
+
+What we learned about the loop:
+- **The leaps came from widening the canvas, not rearranging screens**: presence (0→1), time (1→2), new data and places (2→3), leaving the app (3→4), leaving the phone (the Book) and leaving the single user (Live). Screen leaps ran out by round 3; wider-canvas leaps by round 6.
+- **The method mattered more than the round count.** Screenshot critiques found hierarchy and copy. Code reading found the data-loss bugs. The round-8 tabletop rehearsal (four phones, beat by beat) found a whole class of time and identity bugs that screenshots can't show, and it was the highest-yield round.
+- **Failure modes**: additive drift until a critic forced cuts; leaps judged by concept, not behaviour; one model family as builder, critic and user; no real people or devices; the score saturated at 8/10 for seven rounds.
+- **Next time**: rotate methods on a schedule, give each round a concept budget, bring in outside critics and real people at rounds 3, 6 and 9, split the score into craft, concept and verified behaviour, and decide platform limits (server or not) at round 0.
+
+The study, with the chart: claude.ai/artifact/TZU6UFgw9e6Q5wziQ5oRhj · Canvas: claude.ai/artifact/BcPZxFrzzEWT8Z56Ph9Rfb
