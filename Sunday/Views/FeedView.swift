@@ -468,7 +468,6 @@ struct TonightCard: View {
                     .overlay {
                         if !store.isFreshFromFamily { CheckingOverlay() }
                     }
-                    }
                 }
                 if store.role == .solo {
                     snapButton.buttonStyle(.borderedProminent).controlSize(.large)
@@ -549,18 +548,19 @@ struct TonightCard: View {
                     .controlSize(.large)
                     // Sunday Live: the whole family checks in and snaps.
                     if store.role != .solo {
-                    Button {
-                        whenNamed { store.startLive(meal) }
-                    } label: {
-                        Label("We're sitting down", systemImage: "dot.radiowaves.left.and.right")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .accessibilityHint("Lets everyone in the family check in and add photos to tonight's dinner.")
-                    .disabled(!store.isFreshFromFamily)
-                    .overlay {
-                        if !store.isFreshFromFamily { CheckingOverlay() }
+                        Button {
+                            whenNamed { store.startLive(meal) }
+                        } label: {
+                            Label("We're sitting down", systemImage: "dot.radiowaves.left.and.right")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .accessibilityHint("Lets everyone in the family check in and add photos to tonight's dinner.")
+                        .disabled(!store.isFreshFromFamily)
+                        .overlay {
+                            if !store.isFreshFromFamily { CheckingOverlay() }
+                        }
                     }
                 }
 
