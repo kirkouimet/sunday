@@ -7,10 +7,19 @@ public enum LiveDinner {
     /// How long a dinner stays live if nobody wraps it up.
     public static let window: TimeInterval = 5 * 3600
 
-    public static func isLive(startedAt: Date?, endedAt: Date?, now: Date = .now) -> Bool {
+    public static func isLive(startedAt: Date?, endedAt: Date?, now: Date = .now,
+                              calendar: Calendar = .current) -> Bool {
         guard let startedAt, endedAt == nil else { return false }
         let elapsed = now.timeIntervalSince(startedAt)
-        return elapsed >= -60 && elapsed < window
+        return elapsed >= -60 && now < endsAt(startedAt, calendar: calendar)
+    }
+
+    /// When a dinner nobody wrapped up ends on its own: five hours on, or
+    /// 11:30 that night, whichever is first (but never under 90 minutes).
+    public static func endsAt(_ startedAt: Date, calendar: Calendar = .current) -> Date {
+        let byWindow = startedAt.addingTimeInterval(window)
+        guard let lateNight = calendar.date(bySettingHour: 23, minute: 30, second: 0, of: startedAt) else { return byWindow }
+        return max(min(byWindow, lateNight), startedAt.addingTimeInterval(90 * 60))
     }
 
     /// "Mom's cooking · 4 at the table · 3 photos"

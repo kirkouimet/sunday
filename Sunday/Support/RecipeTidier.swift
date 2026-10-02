@@ -1,4 +1,5 @@
 import Foundation
+import SundayKit
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -16,7 +17,15 @@ enum RecipeTidier {
         return false
     }
 
-    static func tidy(_ text: String, dish: String) async -> String? {
+    enum Outcome {
+        case sorted(StructuredRecipe)
+        /// More than the on-device model can take in at once.
+        case tooLong
+        case failed
+    }
+
+    static func tidy(_ text: String, dish: String) async -> Outcome {
+        guard text.count <= StructuredRecipe.maxInputCharacters else { return .tooLong }
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             let session = LanguageModelSession(instructions: """
@@ -29,13 +38,19 @@ enum RecipeTidier {
                     to: "Dish: \(dish)\n\nWhat they said:\n\(text)",
                     generating: TidyRecipe.self
                 )
-                return response.content.formatted
+                let recipe = StructuredRecipe(ingredients: response.content.ingredients,
+                                              steps: response.content.steps,
+                                              note: response.content.note)
+                return recipe.isEmpty ? .failed : .sorted(recipe)
+            } catch let error as LanguageModelSession.GenerationError {
+                if case .exceededContextWindowSize = error { return .tooLong }
+                return .failed
             } catch {
-                return nil
+                return .failed
             }
         }
         #endif
-        return nil
+        return .failed
     }
 }
 
@@ -49,18 +64,5 @@ struct TidyRecipe {
     var steps: [String]
     @Guide(description: "A tip, memory or family note they mentioned, or an empty string")
     var note: String
-
-    var formatted: String {
-        var parts: [String] = []
-        if !ingredients.isEmpty {
-            parts.append("Ingredients\n" + ingredients.map { "• \($0)" }.joined(separator: "\n"))
-        }
-        if !steps.isEmpty {
-            parts.append("Steps\n" + steps.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"))
-        }
-        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { parts.append("“\(trimmed)”") }
-        return parts.joined(separator: "\n\n")
-    }
 }
 #endif

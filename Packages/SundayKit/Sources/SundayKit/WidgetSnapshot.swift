@@ -124,8 +124,11 @@ public enum WidgetStorage {
 
         // Only now remove thumbnails the new snapshot no longer uses, so the
         // widget never reads a snapshot pointing at a deleted image.
-        let keep = Set(images.keys).union([fileName])
-        for existing in (try? fm.contentsOfDirectory(atPath: directory.path)) ?? [] where !keep.contains(existing) {
+        // Only widget thumbnails: the queues (pending ratings, check-ins) and
+        // the live dinner's photo live here too.
+        let keep = Set(images.keys)
+        for existing in (try? fm.contentsOfDirectory(atPath: directory.path)) ?? []
+        where existing.hasSuffix(".jpg") && !existing.hasPrefix("live-") && !keep.contains(existing) {
             try? fm.removeItem(at: directory.appendingPathComponent(existing))
         }
     }
@@ -157,6 +160,8 @@ public enum DeepLink {
 
     /// Opens the camera for tonight's dinner.
     public static let snap = URL(string: "sunday://snap")!
+    /// Opens the feed to the live dinner ("Tell the table").
+    public static let live = URL(string: "sunday://live")!
 
     public static func isSnap(_ url: URL) -> Bool {
         url.scheme == scheme && url.host == "snap"

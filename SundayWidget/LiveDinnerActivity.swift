@@ -15,7 +15,7 @@ struct LiveDinnerActivity: Widget {
             LiveDinnerLockScreen(context: context)
                 .activityBackgroundTint(Color.black.opacity(0.75))
                 .activitySystemActionForegroundColor(.white)
-                .widgetURL(DeepLink.snap)
+                .widgetURL(DeepLink.live)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -41,7 +41,8 @@ struct LiveDinnerActivity: Widget {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                         Spacer()
-                        CheckInButton(mealID: context.attributes.mealID, isCheckedIn: context.state.isMeCheckedIn)
+                        CheckInButton(mealID: context.attributes.mealID, isCheckedIn: context.state.isMeCheckedIn,
+                                      knowsMe: context.state.me != nil)
                     }
                 }
             } compactLeading: {
@@ -56,7 +57,7 @@ struct LiveDinnerActivity: Widget {
                 Image(systemName: "fork.knife")
                     .foregroundStyle(liveAccent)
             }
-            .widgetURL(DeepLink.snap)
+            .widgetURL(DeepLink.live)
             .keylineTint(liveAccent)
         }
     }
@@ -82,7 +83,15 @@ private struct LiveDinnerLockScreen: View {
                 .font(.system(.title3, design: .serif).weight(.bold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
-            HStack(alignment: .center) {
+            HStack(alignment: .center, spacing: 12) {
+                if let data = WidgetStorage.imageData(named: context.state.photoFile), let image = UIImage(data: data) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 58, height: 58)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 6) {
                     Faces(people: context.state.people, size: 26, limit: 6)
                     Text(LiveDinner.status(cook: context.state.cook, people: context.state.people.count,
@@ -92,7 +101,15 @@ private struct LiveDinnerLockScreen: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                CheckInButton(mealID: context.attributes.mealID, isCheckedIn: context.state.isMeCheckedIn)
+                VStack(alignment: .trailing, spacing: 6) {
+                    CheckInButton(mealID: context.attributes.mealID, isCheckedIn: context.state.isMeCheckedIn,
+                                  knowsMe: context.state.me != nil)
+                    Link(destination: DeepLink.snap) {
+                        Label("Snap", systemImage: "camera.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
             }
         }
         .padding(16)
@@ -102,6 +119,7 @@ private struct LiveDinnerLockScreen: View {
 private struct CheckInButton: View {
     let mealID: String
     let isCheckedIn: Bool
+    let knowsMe: Bool
 
     var body: some View {
         if isCheckedIn {
@@ -109,13 +127,21 @@ private struct CheckInButton: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(liveAccent)
         } else if let id = UUID(uuidString: mealID) {
-            Button(intent: CheckInIntent(mealID: id)) {
-                Label(PendingCheckIns.contains(id) ? "Checked in" : "I'm here", systemImage: "hand.wave.fill")
-                    .font(.caption.weight(.semibold))
+            Group {
+                if knowsMe {
+                    Button(intent: CheckInIntent(mealID: id)) { label }
+                } else {
+                    Button(intent: CheckInAndAskIntent(mealID: id)) { label }
+                }
             }
             .buttonStyle(.borderedProminent)
             .tint(liveAccent)
         }
+    }
+
+    private var label: some View {
+        Label("I'm here", systemImage: "hand.wave.fill")
+            .font(.caption.weight(.semibold))
     }
 }
 

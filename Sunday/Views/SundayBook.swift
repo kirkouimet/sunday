@@ -44,7 +44,7 @@ enum SundayBook {
             draw(BookPage(meal: meal))
             let key = MealName.normalize(meal.displayName)
             if let recipe = recipes[key], printed.insert(key).inserted {
-                draw(RecipePage(dish: meal.displayName, text: recipe.text, by: recipe.by))
+                draw(RecipePage(dish: meal.displayName, text: recipe.text, by: recipe.by, structure: recipe.structure))
             }
         }
         context.closePDF()
@@ -52,12 +52,14 @@ enum SundayBook {
     }
 
     /// Each dish's written recipe (from whichever dinner holds it).
-    private static func recipesByDish(_ meals: [Meal]) -> [String: (text: String, by: String?)] {
-        var result: [String: (text: String, by: String?)] = [:]
+    private static func recipesByDish(_ meals: [Meal]) -> [String: (text: String, by: String?, structure: StructuredRecipe?)] {
+        var result: [String: (text: String, by: String?, structure: StructuredRecipe?)] = [:]
         for meal in meals {
             guard let text = meal.recipe, !text.isEmpty else { continue }
             let key = MealName.normalize(meal.displayName)
-            if result[key] == nil { result[key] = (text, meal.recipeBy ?? meal.cook) }
+            if result[key] == nil {
+                result[key] = (text, meal.recipeBy ?? meal.cook, StructuredRecipe.decode(meal.recipeStructure))
+            }
         }
         return result
     }
@@ -74,7 +76,7 @@ private struct BookCover: View {
     var body: some View {
         let people = Attendance.counts(in: dinners.compactMap { m -> Attendance.Dinner? in
             guard let id = m.id, let date = m.date else { return nil }
-            return Attendance.Dinner(id: id, date: date, people: Attendance.decode(m.attendees))
+            return Attendance.Dinner(id: id, date: date, people: m.tablePeople)
         })
         let photos = dinners.compactMap { $0.sortedPhotos.first?.thumbnailData }.prefix(6).compactMap(UIImage.init(data:))
         VStack(spacing: 18) {
@@ -121,7 +123,7 @@ private struct BookPage: View {
     let meal: Meal
 
     var body: some View {
-        let people = Attendance.decode(meal.attendees)
+        let people = meal.tablePeople
         VStack(alignment: .leading, spacing: 14) {
             if let data = meal.sortedPhotos.first?.imageData ?? meal.sortedPhotos.first?.thumbnailData,
                let image = UIImage(data: data) {
@@ -170,6 +172,7 @@ private struct RecipePage: View {
     let dish: String
     let text: String
     let by: String?
+    let structure: StructuredRecipe?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -183,10 +186,38 @@ private struct RecipePage: View {
                     .font(.system(size: 14, design: .serif))
                     .italic()
             }
-            Text(text)
-                .font(.system(size: 12, design: .serif))
-                .lineSpacing(3)
+            if let structure, !structure.isEmpty {
+                // Sorted from what was said: a proper card, ingredients beside steps.
+                HStack(alignment: .top, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("You'll need").font(.system(size: 12, weight: .semibold, design: .serif))
+                        ForEach(Array(structure.ingredients.enumerated()), id: \.offset) { _, item in
+                            Text("• \(item)").font(.system(size: 11, design: .serif))
+                        }
+                    }
+                    .frame(width: 170, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 7) {
+                        ForEach(Array(structure.steps.enumerated()), id: \.offset) { index, step in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("\(index + 1)").font(.system(size: 13, weight: .bold, design: .serif)).foregroundStyle(bookAccent)
+                                Text(step).font(.system(size: 12, design: .serif))
+                            }
+                        }
+                    }
+                }
                 .minimumScaleFactor(0.7)
+                if !structure.note.isEmpty {
+                    Text("“\(structure.note)”")
+                        .font(.system(size: 13, design: .serif))
+                        .italic()
+                        .padding(.top, 6)
+                }
+            } else {
+                Text(text)
+                    .font(.system(size: 12, design: .serif))
+                    .lineSpacing(3)
+                    .minimumScaleFactor(0.7)
+            }
             Spacer(minLength: 0)
         }
         .foregroundStyle(bookInk)

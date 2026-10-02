@@ -27,7 +27,7 @@ struct PersonView: View {
     /// Dinners they were at (or cooked), newest first.
     private var theirs: [Meal] {
         meals.filter { meal in
-            !meal.isPlan && (matches(meal.cook) || Attendance.decode(meal.attendees).contains(where: matches))
+            !meal.isPlan && (matches(meal.cook) || meal.tablePeople.contains(where: matches))
         }
     }
 

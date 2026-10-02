@@ -23,6 +23,8 @@ final class Meal: NSManagedObject, Identifiable {
     @NSManaged var isPlan: Bool
     /// The cook telling the recipe in their own voice (AAC).
     @NSManaged var recipeAudio: Data?
+    /// The recipe sorted into ingredients and steps (StructuredRecipe JSON).
+    @NSManaged var recipeStructure: String?
     /// Who told the recipe (defaults to the cook).
     @NSManaged var recipeBy: String?
     /// A guest's own story from this dinner ("Grandma June: how I make
@@ -38,13 +40,24 @@ final class Meal: NSManagedObject, Identifiable {
     @NSManaged var liveEndedAt: Date?
     @NSManaged var createdAt: Date?
     @NSManaged var photos: NSSet?
+    /// "I'm here" taps during Sunday Live, one record each, so phones
+    /// checking in at the same moment never overwrite each other.
+    @NSManaged var checkIns: NSSet?
 
     var displayName: String {
         let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Untitled dinner" : trimmed
+        return trimmed.isEmpty ? "Sunday dinner" : trimmed
     }
 
     var isLive: Bool { LiveDinner.isLive(startedAt: liveAt, endedAt: liveEndedAt) }
+
+    /// Everyone at the table: who was recorded, plus who checked in live.
+    var tablePeople: [String] {
+        let checkedIn = (checkIns as? Set<CheckIn> ?? [])
+            .sorted { ($0.at ?? .distantPast) < ($1.at ?? .distantPast) }
+            .compactMap(\.name)
+        return Attendance.decode(Attendance.encode(Attendance.decode(attendees) + checkedIn))
+    }
 
     var sortedPhotos: [Photo] {
         (photos as? Set<Photo> ?? []).sorted {
@@ -61,6 +74,18 @@ final class Photo: NSManagedObject, Identifiable {
     @NSManaged var thumbnailData: Data?
     @NSManaged var sortIndex: Int16
     @NSManaged var createdAt: Date?
+    /// Who took it (on Sunday Live, everyone's a photographer).
+    @NSManaged var by: String?
+    @NSManaged var meal: Meal?
+}
+
+/// One person saying "I'm here" at a live dinner. Lives in the dinner's
+/// zone like a photo; never edited, so it can't conflict.
+@objc(CheckIn)
+final class CheckIn: NSManagedObject, Identifiable {
+    @NSManaged var id: UUID?
+    @NSManaged var name: String?
+    @NSManaged var at: Date?
     @NSManaged var meal: Meal?
 }
 
@@ -124,6 +149,20 @@ enum SundayModel {
         photoMeal.maxCount = 1
         photoMeal.deleteRule = .nullifyDeleteRule
 
+        let mealCheckIns = NSRelationshipDescription()
+        mealCheckIns.name = "checkIns"
+        mealCheckIns.isOptional = true
+        mealCheckIns.minCount = 0
+        mealCheckIns.maxCount = 0
+        mealCheckIns.deleteRule = .cascadeDeleteRule
+
+        let checkInMeal = NSRelationshipDescription()
+        checkInMeal.name = "meal"
+        checkInMeal.isOptional = true
+        checkInMeal.minCount = 0
+        checkInMeal.maxCount = 1
+        checkInMeal.deleteRule = .nullifyDeleteRule
+
         let meal = entity("Meal", [
             attribute("id", .UUIDAttributeType),
             attribute("name", .stringAttributeType),
@@ -136,6 +175,7 @@ enum SundayModel {
             attribute("isPlan", .booleanAttributeType, default: false),
             attribute("recipeAudio", .binaryDataAttributeType, externalStorage: true),
             attribute("recipeBy", .stringAttributeType),
+            attribute("recipeStructure", .stringAttributeType),
             attribute("story", .stringAttributeType),
             attribute("storyAudio", .binaryDataAttributeType, externalStorage: true),
             attribute("storyBy", .stringAttributeType),
@@ -144,6 +184,7 @@ enum SundayModel {
             attribute("liveEndedAt", .dateAttributeType),
             attribute("createdAt", .dateAttributeType),
             mealPhotos,
+            mealCheckIns,
         ])
 
         let photo = entity("Photo", [
@@ -152,7 +193,15 @@ enum SundayModel {
             attribute("thumbnailData", .binaryDataAttributeType, externalStorage: true),
             attribute("sortIndex", .integer16AttributeType, default: 0),
             attribute("createdAt", .dateAttributeType),
+            attribute("by", .stringAttributeType),
             photoMeal,
+        ])
+
+        let checkIn = entity("CheckIn", [
+            attribute("id", .UUIDAttributeType),
+            attribute("name", .stringAttributeType),
+            attribute("at", .dateAttributeType),
+            checkInMeal,
         ])
 
         let rating = entity("Rating", [
@@ -172,9 +221,13 @@ enum SundayModel {
         mealPhotos.inverseRelationship = photoMeal
         photoMeal.destinationEntity = meal
         photoMeal.inverseRelationship = mealPhotos
+        mealCheckIns.destinationEntity = checkIn
+        mealCheckIns.inverseRelationship = checkInMeal
+        checkInMeal.destinationEntity = meal
+        checkInMeal.inverseRelationship = mealCheckIns
 
         let model = NSManagedObjectModel()
-        model.entities = [meal, photo, rating, family]
+        model.entities = [meal, photo, rating, family, checkIn]
         return model
     }
 }

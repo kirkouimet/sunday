@@ -28,6 +28,11 @@ struct SundayApp: App {
                 .environmentObject(store)
                 .environmentObject(router)
                 .onOpenURL { url in
+                    if url == DeepLink.live {
+                        router.tab = .dinners
+                        router.feedPath = []
+                        return
+                    }
                     if DeepLink.isSnap(url) {
                         router.tab = .dinners
                         router.snapRequested = true
@@ -45,6 +50,7 @@ struct SundayApp: App {
             store.applyPendingCheckIns()
             store.reconcile()
             LiveDinners.sync(store: store)
+            if store.needsMyName { router.askWhoIAm = true }
             WidgetPublisher.publish(store: store)
             Task {
                 await store.refreshAccountStatus()
@@ -66,6 +72,8 @@ final class AppRouter: ObservableObject {
     @Published var snapRequested = false
     /// "What's for dinner?" ideas, as a sheet over the feed.
     @Published var showIdeas = false
+    /// A check-in is waiting on "Which one are you?"
+    @Published var askWhoIAm = false
 
     func show(_ meal: Meal) {
         tab = .dinners
@@ -87,6 +95,10 @@ struct RootView: View {
                 .tag(AppRouter.Tab.family)
         }
         .minimizingTabBarOnScroll()
+        .sheet(isPresented: $router.askWhoIAm) {
+            WhichOneAreYouView { store.setMyName($0) }
+                .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $router.showIdeas) {
             SuggestView()
                 .presentationDragIndicator(.visible)

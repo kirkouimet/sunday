@@ -11,6 +11,30 @@ import os
 enum LiveDinners {
     private static let logger = Logger(subsystem: "com.kirkouimet.sunday", category: "live")
 
+    /// The newest photo, small, where the widget extension can read it.
+    private static func writeThumbnail(of meal: Meal, id: String) -> String? {
+        guard let newest = meal.sortedPhotos.max(by: { ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast) }),
+              let data = newest.thumbnailData, let photoID = newest.id,
+              let directory = WidgetStorage.directory
+        else { return nil }
+        let name = "live-\(id)-\(photoID.uuidString).jpg"
+        removeLiveThumbnails(except: name)
+        let url = directory.appendingPathComponent(name)
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
+        }
+        return name
+    }
+
+    private static func removeLiveThumbnails(except keep: String? = nil) {
+        guard let directory = WidgetStorage.directory else { return }
+        for file in (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        where file.hasPrefix("live-") && file != keep {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(file))
+        }
+    }
+
     static func sync(store: MealStore) {
         guard !PersistenceController.isUITesting else { return }
         let live = store.liveMeal()
@@ -19,14 +43,18 @@ enum LiveDinners {
         for activity in Activity<LiveDinnerAttributes>.activities where activity.attributes.mealID != liveID {
             Task { await activity.end(nil, dismissalPolicy: .immediate) }
         }
-        guard let live, let liveID, let startedAt = live.liveAt else { return }
+        guard let live, let liveID, let startedAt = live.liveAt else {
+            removeLiveThumbnails()
+            return
+        }
 
         let state = LiveDinnerAttributes.ContentState(
             dish: live.displayName,
             cook: live.cook.flatMap { $0.isEmpty ? nil : $0 },
-            people: Attendance.decode(live.attendees),
+            people: live.tablePeople,
             photoCount: live.sortedPhotos.count,
-            me: store.myName
+            me: store.myName,
+            photoFile: writeThumbnail(of: live, id: liveID)
         )
         let content = ActivityContent(state: state, staleDate: startedAt.addingTimeInterval(LiveDinner.window))
 

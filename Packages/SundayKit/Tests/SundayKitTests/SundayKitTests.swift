@@ -491,6 +491,18 @@ final class LiveDinnerTests: XCTestCase {
         XCTAssertFalse(LiveDinner.isLive(startedAt: nil, endedAt: nil))
     }
 
+    func testEndsLateEvening() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        func at(_ hour: Int, _ minute: Int = 0) -> Date {
+            calendar.date(from: DateComponents(year: 2026, month: 10, day: 4, hour: hour, minute: minute))!
+        }
+        XCTAssertEqual(LiveDinner.endsAt(at(17), calendar: calendar), at(22))
+        XCTAssertEqual(LiveDinner.endsAt(at(20), calendar: calendar), at(23, 30))
+        XCTAssertEqual(LiveDinner.endsAt(at(22, 30), calendar: calendar), at(24))
+        XCTAssertFalse(LiveDinner.isLive(startedAt: at(20), endedAt: nil, now: at(23, 45), calendar: calendar))
+    }
+
     func testStatus() {
         XCTAssertEqual(LiveDinner.status(cook: "Mom", people: 4, photos: 3), "Mom's cooking · 4 at the table · 3 photos")
         XCTAssertEqual(LiveDinner.status(cook: nil, people: 0, photos: 1), "1 photo")
@@ -513,5 +525,35 @@ final class LiveDinnerTests: XCTestCase {
         PendingCheckIns.drain(from: directory) { drained.append($0.mealID) }
         XCTAssertEqual(drained, [chili])
         XCTAssertTrue(PendingCheckIns.read(from: directory).isEmpty)
+    }
+}
+
+final class WidgetStorageCleanupTests: XCTestCase {
+    func testWritingSnapshotKeepsQueues() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let meal = UUID()
+        try PendingRatings.add(.init(mealID: meal, stars: 4), to: directory)
+        try PendingCheckIns.add(.init(mealID: meal), to: directory)
+        try Data([1]).write(to: directory.appendingPathComponent("old.jpg"))
+        try Data([1]).write(to: directory.appendingPathComponent("live-x.jpg"))
+        let snapshot = WidgetSnapshot(latest: nil, memories: [], recentDates: [], totalDinners: 0)
+        try WidgetStorage.write(snapshot, images: ["new.jpg": Data([2])], to: directory)
+        XCTAssertEqual(PendingRatings.stars(for: meal, in: directory), 4)
+        XCTAssertTrue(PendingCheckIns.contains(meal, in: directory))
+        let files = Set(try FileManager.default.contentsOfDirectory(atPath: directory.path))
+        XCTAssertFalse(files.contains("old.jpg"))
+        XCTAssertTrue(files.contains("new.jpg"))
+        XCTAssertTrue(files.contains("live-x.jpg"))
+    }
+}
+
+final class StructuredRecipeTests: XCTestCase {
+    func testFormattedAndRoundTrip() {
+        let recipe = StructuredRecipe(ingredients: ["2 lemons", " ", "1 chicken"], steps: ["Roast it.", "Squeeze."], note: "Grandma's way")
+        XCTAssertEqual(recipe.ingredients, ["2 lemons", "1 chicken"])
+        XCTAssertEqual(recipe.formatted, "Ingredients\n• 2 lemons\n• 1 chicken\n\nSteps\n1. Roast it.\n2. Squeeze.\n\n“Grandma's way”")
+        XCTAssertEqual(StructuredRecipe.decode(recipe.encoded), recipe)
+        XCTAssertNil(StructuredRecipe.decode("nope"))
     }
 }

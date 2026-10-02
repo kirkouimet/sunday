@@ -169,6 +169,7 @@ final class MealStore: ObservableObject {
             photo.id = UUID()
             photo.createdAt = .now
             photo.sortIndex = Int16(index)
+            photo.by = myName
             photo.imageData = images.full
             photo.thumbnailData = images.thumbnail
             if let store { context.assign(photo, to: store) }
@@ -215,10 +216,12 @@ final class MealStore: ObservableObject {
         }
     }
 
-    func setRecipe(_ recipe: String, audio: Data?, by teller: String?, for meal: Meal) {
+    func setRecipe(_ recipe: String, audio: Data?, by teller: String?, structure: StructuredRecipe? = nil, for meal: Meal) {
         guard !meal.isGone else { return }
         let trimmed = recipe.trimmingCharacters(in: .whitespacesAndNewlines)
         meal.recipe = trimmed.isEmpty ? nil : trimmed
+        // Only while the text is still what the structure says.
+        meal.recipeStructure = structure.flatMap { $0.formatted == trimmed ? $0.encoded : nil }
         meal.recipeAudio = audio
         meal.recipeBy = teller
         saveQuietly()
@@ -257,18 +260,18 @@ final class MealStore: ObservableObject {
 
     static let myNameKey = "myName"
 
-    /// Who this phone belongs to at the table: chosen once ("Which one are
-    /// you?"), else your name from the family share.
+    /// Who this phone belongs to at the table, in the family's own words
+    /// ("Dad", not the iCloud name): asked once per phone, "Which one are you?"
     var myName: String? {
-        if let stored = UserDefaults.standard.string(forKey: Self.myNameKey), !stored.isEmpty { return stored }
-        guard let components = share?.currentUserParticipant?.userIdentity.nameComponents else { return nil }
-        let name = components.formatted(.name(style: .short))
-        return name.isEmpty ? nil : name
+        guard let stored = UserDefaults.standard.string(forKey: Self.myNameKey), !stored.isEmpty else { return nil }
+        return stored
     }
 
     func setMyName(_ name: String) {
         UserDefaults.standard.set(name.trimmingCharacters(in: .whitespaces), forKey: Self.myNameKey)
         objectWillChange.send()
+        applyPendingCheckIns()
+        LiveDinners.sync(store: self)
     }
 
     /// The dinner happening right now, if someone started it.
@@ -285,40 +288,95 @@ final class MealStore: ObservableObject {
         meal.liveAt = .now
         meal.liveEndedAt = nil
         meal.liveBy = myName
-        if let me = myName { meal.attendees = LiveDinner.checkIn(me, to: meal.attendees) }
         saveQuietly()
+        if myName != nil { checkIn(meal) }
         FamilyNotifier.markLiveKnown(meal.id)
         LiveDinners.sync(store: self)
     }
 
-    /// "I'm here": you're at the table.
-    func checkIn(_ meal: Meal, as name: String? = nil) {
-        guard !meal.isGone, let name = name ?? myName else { return }
-        meal.attendees = LiveDinner.checkIn(name, to: meal.attendees)
+    /// Live without a plan: any Sunday evening, name it later (or never).
+    func startLiveTonight() async throws {
+        var draft = MealDraft()
+        draft.date = .now
+        draft.cook = ""
+        let meal = try await save(draft)
+        meal.isPlan = true // Not history until a photo or "yes, we had it".
         saveQuietly()
+        startLive(meal)
+    }
+
+    func rename(_ meal: Meal, to name: String) {
+        guard !meal.isGone else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != meal.name else { return }
+        meal.name = trimmed
+        saveQuietly()
+        LiveDinners.sync(store: self)
+    }
+
+    /// "I'm here": its own record in the dinner's zone, so four phones
+    /// tapping at once all count.
+    func checkIn(_ meal: Meal, as name: String? = nil) {
+        guard !meal.isGone, let name = name ?? myName,
+              !meal.tablePeople.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame })
+        else { return }
+        let record = CheckIn(context: context)
+        record.id = UUID()
+        record.name = name
+        record.at = .now
+        if let store = meal.objectID.persistentStore { context.assign(record, to: store) }
+        record.meal = meal
+        saveQuietly()
+        if role == .owner {
+            let objectID = meal.objectID
+            Task { await addToFamilyShare(objectID) }
+        }
         LiveDinners.sync(store: self)
     }
 
     func isCheckedIn(_ meal: Meal) -> Bool {
         guard let me = myName else { return false }
-        return Attendance.decode(meal.attendees).contains { $0.caseInsensitiveCompare(me) == .orderedSame }
+        return meal.tablePeople.contains { $0.caseInsensitiveCompare(me) == .orderedSame }
     }
 
-    /// "That's dinner": the evening is over; rating takes it from here.
+    /// Only whoever started dinner, or the cook, wraps it up for everyone.
+    func canEndLive(_ meal: Meal) -> Bool {
+        guard let me = myName else { return meal.liveBy == nil }
+        return [meal.liveBy, meal.cook].contains { ($0 ?? "").caseInsensitiveCompare(me) == .orderedSame }
+            || meal.liveBy == nil
+    }
+
+    /// "That's dinner": the evening is over; check-ins become the record and
+    /// rating takes it from here.
     func endLive(_ meal: Meal) {
         guard !meal.isGone else { return }
+        meal.attendees = Attendance.encode(meal.tablePeople)
         meal.liveEndedAt = .now
         saveQuietly()
         LiveDinners.sync(store: self)
     }
 
-    /// Check-ins tapped on a Live Activity or notification.
+    /// Undo for "That's dinner", while the toast is up.
+    func resumeLive(_ meal: Meal) {
+        guard !meal.isGone else { return }
+        meal.liveEndedAt = nil
+        saveQuietly()
+        LiveDinners.sync(store: self)
+    }
+
+    /// Check-ins tapped on a Live Activity or notification. Waits for a
+    /// name: the app asks "Which one are you?" when one is queued.
     func applyPendingCheckIns() {
         guard !PersistenceController.isUITesting, myName != nil else { return }
         PendingCheckIns.drain { entry in
             guard let meal = meal(withID: entry.mealID) else { return }
             checkIn(meal)
         }
+    }
+
+    /// A check-in is waiting on "Which one are you?"
+    var needsMyName: Bool {
+        myName == nil && !PendingCheckIns.read().isEmpty
     }
 
     /// Plan a dinner for this Sunday (or today, if it's Sunday): a dinner
@@ -472,7 +530,7 @@ final class MealStore: ObservableObject {
         var counts: [String: (name: String, count: Int)] = [:]
         for name in participantNames { counts[name.lowercased(), default: (name, 0)].count += 1000 }
         for meal in meals {
-            let people = Attendance.decode(meal.attendees) + [meal.cook ?? ""]
+            let people = meal.tablePeople + [meal.cook ?? ""]
             for person in people.map({ $0.trimmingCharacters(in: .whitespaces) }) where !person.isEmpty {
                 counts[person.lowercased(), default: (person, 0)].count += 1
             }
@@ -576,6 +634,7 @@ final class MealStore: ObservableObject {
                 // Already in the zone. New photos follow their meal's zone; push
                 // them explicitly only if any are still outside it.
                 let photoIDs = meal.sortedPhotos.map(\.objectID)
+                    + (meal.checkIns as? Set<CheckIn> ?? []).map(\.objectID)
                 let photoShares = try persistence.container.fetchShares(matching: photoIDs)
                 guard photoIDs.contains(where: { photoShares[$0] == nil }) else { return }
             }

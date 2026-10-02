@@ -10,6 +10,7 @@ Canvas with screenshots and pinned critiques: claude.ai/design ("Sunday Design R
 | Loop | Maturity | 🚀 | 🧱 | 🎨 | Biggest idea |
 |---|---|---|---|---|---|
 | 0 (baseline) | – | 3 | 6 | 8 | "Tonight" moment; cooks as people; Ideas as a decision tool |
+| 6 | 8/10 | 0 new (Live judged "partly a leap") | 6 | 2 | **Was loop 6 a leap? Partly**: "biggest step since loop 3… the app now has a present tense", but "single-player plumbing underneath" · 6 bugs, all in the new multiplayer core. Critic: "one step-change left: make Live actually multiplayer; then hardening, no new concepts" |
 | 5 | 8/10 | 2 | 3 | 2 | **Sunday Live** (multiplayer, real-time: Live Activity, "I'm here", everyone's photos); talk instead of type (on-device model) · subtraction "worked" · 4 ✂️ · 4 bugs. Critic: "if loop 6 builds that, expect a genuine leap; if it builds screens, marginal gains" |
 | 4 | 8/10 | 2 | 3 | 2 | 5 ✂️ cuts recommended (new) · Sunday Book (printed yearbook); voice → text · 3 bugs incl. data loss. Critic: "marginal value is now negative" |
 | 3 | 8/10 | 3 | 3 | 4 | Interactive Lock Screen (rate/snap without opening the app); people as pages; heirloom voice · 3 bugs. Critic: "almost all refinement… screens at marginal gains" |
@@ -97,3 +98,19 @@ Critique (8/10): "Subtraction worked: the first round where the app feels lighte
 - ✂️ The ✨ button is gone: Ideas lives in context ("Other ideas", "Still deciding?", "Change the plan"). Cut "Where it started", "Sundays with" when everyone ties, the hemisphere picker (the region decides), the season in Detail and the timeline, and the privacy line after your first rating.
 - 🎨 Name suggestions are solid chips on the keyboard bar; the photo tile shrinks to a row while you type; *Another idea* uses a shuffle icon; the story sheet's placeholder fits stories.
 - Public layer: follower and fork counts are cut from the profile; Requests puts *From your family* first (names shown, "Tell it" to record), with strangers' anonymous counts below.
+
+## Loop 6 → 7: Live, for real (implemented)
+
+Critique (8/10), on the question of the whole experiment: **"Was loop 6 a leap? Partly."** "As a concept it is the biggest step since loop 3's zero-launch widgets. The app now has a present tense… The implementation undercuts it": with a real family of four it "would likely show '2 at the table' and a 'Kirk' next to 'Dad'." Every bug was in the new core, so loop 7 is about making it true.
+
+- 🐛 **Check-ins are records, not a string.** A `CheckIn` entity (name, time) lives in the dinner's zone like a photo; nothing is edited, so four phones tapping at once all count. `Meal.tablePeople` is the union; "That's dinner" folds it into `attendees`.
+- 🐛 **Identity is the family's word for you.** No more iCloud-name fallback ("Kirk"): every phone is asked once, *Which one are you?*, from the family's names or "Someone else". A queued "I'm here" from an unnamed phone opens the app to ask (a foreground notification action and an `openAppWhenRun` intent), and then applies. No more false "Checked in".
+- 🧱 **Live on any Sunday.** *We're sitting down* also appears when nothing was planned (name it later on the card: "What's cooking?"), and a dinner snapped on a Sunday evening offers *Go live* so the rest of the table can add theirs.
+- 🧱 **The live moment is the hero.** The newest photo is big, with LIVE, the dish, status and faces over it; one primary action (*I'm here*, then *Snap a photo*); other photos below with their photographer's face.
+- 🧱 **Photos have authors** (`Photo.by`): "Ellie's photo" on Detail, faces on the Live card's thumbnails.
+- 🧱 **Tell the table**: a share sheet with a `sunday://live` link for anyone whose phone didn't buzz. This is the honest fallback, since CloudKit can't push-to-start a Live Activity without a server.
+- 🐛 **Only the starter or the cook wraps up**, with a confirmation, and *Undo* for 6 seconds. Live also ends on its own (five hours, or 11:30 pm; tested).
+- 🧱 **Structured recipes**: the on-device model's ingredients and steps are stored as `StructuredRecipe` JSON beside the text (tested). The Book lays them out as "You'll need" beside numbered steps. Over the model's context, the app says "Too long to sort in one go" instead of a silent nil.
+- 🎨 The Live Activity shows the newest photo, *Snap* is its own button, and a tap opens the live card. "Who was at the table" is hidden in the editor while Live; the "since 6:10" line is gone.
+- 🐛 **Found while building**: every widget refresh deleted everything in the App Group folder that wasn't a current thumbnail, *including the pending-ratings queue* (stars tapped on the Lock Screen could vanish before the app applied them). Now only stale thumbnails are removed (tested).
+- Public layer: the post's Save/Fork counts are gone ("Save", "Make it yours"); the publish button now matches Requests ("Send to Ellie and Sam").

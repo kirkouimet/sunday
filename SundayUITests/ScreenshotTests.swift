@@ -95,7 +95,8 @@ final class ScreenshotTests: XCTestCase {
         let live = XCUIApplication()
         live.launchArguments = ["-uiTesting", "-uiLive"] + arguments
         live.launch()
-        if live.staticTexts["Live · Sunday dinner"].firstMatch.waitForExistence(timeout: 15) {
+        if live.otherElements["liveCard"].firstMatch.waitForExistence(timeout: 15)
+            || live.staticTexts["Chili"].firstMatch.waitForExistence(timeout: 3) {
             sleep(1)
             snap("9-live", variant)
         } else {

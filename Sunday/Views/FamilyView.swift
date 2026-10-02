@@ -147,7 +147,7 @@ struct FamilyView: View {
     private var funStats: some View {
         let attendance = Attendance.counts(in: history.compactMap { m -> Attendance.Dinner? in
             guard let id = m.id, let date = m.date else { return nil }
-            return Attendance.Dinner(id: id, date: date, people: Attendance.decode(m.attendees))
+            return Attendance.Dinner(id: id, date: date, people: m.tablePeople)
         })
         if attendance.count > 1, Set(attendance.map(\.count)).count > 1 {
             Section {

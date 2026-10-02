@@ -16,6 +16,8 @@ struct FeedView: View {
     @State private var seasonFilter: Season?
     @State private var isAdding = false
     @State private var editingMeal: Meal?
+    /// "Dinner wrapped up · Undo", for a few seconds after That's dinner.
+    @State private var justEnded: Meal?
 
     private var isFiltering: Bool { seasonFilter != nil || !MealName.normalize(searchText).isEmpty }
 
@@ -76,6 +78,11 @@ struct FeedView: View {
         if SundayCalendar.isSunday(.now) {
             guard let tonight = meal(on: .now) else { return .log }
             if tonight.isPlan { return .planned(tonight, isToday: true) }
+            // Snapped tonight without going live, while everyone's still here.
+            if tonight.liveAt == nil, calendar.component(.hour, from: .now) >= 15,
+               Date.now.timeIntervalSince(tonight.createdAt ?? .distantPast) < 3 * 3600 {
+                return .goLive(tonight)
+            }
             return nil
         }
         if let plan = meal(on: SundayCalendar.upcomingSunday(onOrAfter: .now)), plan.isPlan {
@@ -107,9 +114,20 @@ struct FeedView: View {
         NavigationStack(path: $router.feedPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if let mode {
+                    switch mode {
+                    case .live(let meal)?:
+                        LiveDinnerCard(meal: meal, onSnap: { isAdding = true }) { ended in
+                            withAnimation { justEnded = ended }
+                        }
+                        .padding(.horizontal)
+                    case .goLive(let meal)?:
+                        GoLiveBanner { store.startLive(meal) }
+                            .padding(.horizontal)
+                    case .some(let mode):
                         TonightCard(mode: mode, memory: memoryItem, cooks: cooks, streak: streak) { isAdding = true }
                             .padding(.horizontal)
+                    case nil:
+                        EmptyView()
                     }
 
                     if let featured {
@@ -148,6 +166,29 @@ struct FeedView: View {
             .contentMargins(.bottom, 72, for: .scrollContent)
             .background(Color(.systemGroupedBackground))
             .overlay { emptyState(filtered: filtered) }
+            .overlay(alignment: .bottom) {
+                if let ended = justEnded {
+                    HStack {
+                        Text("Dinner wrapped up").font(.subheadline.weight(.medium))
+                        Spacer()
+                        Button("Undo") {
+                            store.resumeLive(ended)
+                            withAnimation { justEnded = nil }
+                        }
+                        .bold()
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.horizontal)
+                    .padding(.bottom, 80)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .task {
+                        try? await Task.sleep(for: .seconds(6))
+                        withAnimation { justEnded = nil }
+                    }
+                }
+            }
             .navigationTitle("Sunday")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -275,6 +316,8 @@ struct TonightCard: View {
         case planned(Meal, isToday: Bool)
         case followUp(Meal)
         case live(Meal)
+        /// Tonight's dinner was just snapped without going live: offer it.
+        case goLive(Meal)
 
         var isPlanWithMemory: Bool {
             if case .plan = self { return true }
@@ -310,6 +353,15 @@ struct TonightCard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                Button {
+                    Task { try? await store.startLiveTonight() }
+                } label: {
+                    Label("We're sitting down", systemImage: "dot.radiowaves.left.and.right")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .accessibilityHint("Lets everyone in the family check in and add photos to tonight's dinner.")
                 Button("Still deciding? Get an idea") { router.showIdeas = true }
                     .font(.subheadline.weight(.medium))
                     .frame(minHeight: 44)
@@ -391,8 +443,8 @@ struct TonightCard: View {
                     .accessibilityHint("Lets everyone in the family check in and add photos to tonight's dinner.")
                 }
 
-            case .live(let meal):
-                LiveDinnerCard(meal: meal, cooks: cooks, onSnap: onAdd)
+            case .live, .goLive:
+                EmptyView() // Shown by FeedView as the hero card / in the hero.
 
             case .followUp(let meal):
                 Text("Did you have \(meal.displayName)?")
@@ -728,4 +780,31 @@ struct OnThisDayCard: View {
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
         .environmentObject(MealStore(persistence: .preview))
         .environmentObject(AppRouter())
+}
+
+/// "Everyone still at the table?" after tonight's photo, if dinner
+/// wasn't started live: one tap lets the family check in and add theirs.
+struct GoLiveBanner: View {
+    var action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .font(.title3)
+                .foregroundStyle(Color.sundayAccent)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Everyone still at the table?")
+                    .font(.subheadline.weight(.semibold))
+                Text("Go live so they can check in and add their photos.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Go live", action: action)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
 }

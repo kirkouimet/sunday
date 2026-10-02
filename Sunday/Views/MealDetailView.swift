@@ -33,6 +33,8 @@ struct MealDetailView: View {
     @State private var titleScrolledAway = false
     /// What was said, before the model sorted it (for "Back to what was said").
     @State private var untidied: String?
+    @State private var structure: StructuredRecipe?
+    @State private var tidyMessage: String?
     @StateObject private var voice = VoiceMemo()
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -67,7 +69,7 @@ struct MealDetailView: View {
                     if storyTeller == nil, RecipeTidier.isAvailable, !recipeText.isEmpty, !isTranscribing {
                         tidyRow
                             .padding(.horizontal)
-                            .padding(.bottom, 10)
+                            .padding(.bottom, tidyMessage == nil ? 10 : 28)
                     }
                     Divider()
                 TextEditor(text: $recipeText)
@@ -224,7 +226,7 @@ struct MealDetailView: View {
     /// Faces of who was there, and the moment it marks ("First Sunday with June").
     @ViewBuilder
     private var atTheTable: some View {
-        let people = Attendance.decode(meal.attendees)
+        let people = meal.tablePeople
         if !people.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text("At the table")
@@ -246,7 +248,7 @@ struct MealDetailView: View {
                 }
                 if let id = meal.id, let moment = Attendance.moment(for: id, in: allMeals.filter { !$0.isPlan }.compactMap { m -> Attendance.Dinner? in
                     guard let mid = m.id, let date = m.date else { return nil }
-                    return Attendance.Dinner(id: mid, date: date, people: Attendance.decode(m.attendees))
+                    return Attendance.Dinner(id: mid, date: date, people: m.tablePeople)
                 }) {
                     Label(moment, systemImage: "sparkles")
                         .font(.subheadline.weight(.semibold))
@@ -439,6 +441,7 @@ struct MealDetailView: View {
                 Button {
                     recipeText = untidied
                     self.untidied = nil
+                    structure = nil
                 } label: {
                     Label("Back to what was said", systemImage: "arrow.uturn.backward")
                 }
@@ -446,11 +449,18 @@ struct MealDetailView: View {
             } else {
                 Button {
                     isTidying = true
+                    tidyMessage = nil
                     Task {
                         let original = recipeText
-                        if let tidy = await RecipeTidier.tidy(original, dish: meal.displayName), !tidy.isEmpty {
+                        switch await RecipeTidier.tidy(original, dish: meal.displayName) {
+                        case .sorted(let recipe):
                             untidied = original
-                            recipeText = tidy
+                            structure = recipe
+                            recipeText = recipe.formatted
+                        case .tooLong:
+                            tidyMessage = "Too long to sort in one go. Trim it, or sort part of it."
+                        case .failed:
+                            tidyMessage = "Couldn't sort this one. It's saved just as it was said."
                         }
                         isTidying = false
                     }
@@ -464,6 +474,14 @@ struct MealDetailView: View {
             Spacer()
         }
         .font(.subheadline)
+        .overlay(alignment: .bottomLeading) {
+            if let tidyMessage {
+                Text(tidyMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .offset(y: 22)
+            }
+        }
     }
 
     private func transcribe(_ audio: Data) async {
@@ -488,10 +506,12 @@ struct MealDetailView: View {
             store.setStory(recipeText, audio: audio, by: storyTeller, for: meal)
         } else {
             let target = recipeSource ?? meal
-            store.setRecipe(recipeText, audio: audio, by: target.recipeBy ?? target.cook, for: target)
+            store.setRecipe(recipeText, audio: audio, by: target.recipeBy ?? target.cook, structure: structure, for: target)
         }
         voice.discardRecording()
         untidied = nil
+        structure = nil
+        tidyMessage = nil
         isWritingRecipe = false
     }
 
@@ -562,8 +582,21 @@ struct MealDetailView: View {
             TabView {
                 ForEach(Array(photos.enumerated()), id: \.element.objectID) { index, photo in
                     PhotoThumbnail(photo: photo, useFullImage: true)
+                        // Everyone's a photographer on Sunday: say whose.
+                        .overlay(alignment: .bottomLeading) {
+                            if let by = photo.by, !by.isEmpty {
+                                Label("\(by)'s photo", systemImage: "camera.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(.black.opacity(0.4), in: Capsule())
+                                    .padding(.leading, 14)
+                                    .padding(.bottom, 30)
+                            }
+                        }
                         .accessibilityElement()
-                        .accessibilityLabel("Photo \(index + 1) of \(photos.count) of \(meal.displayName)")
+                        .accessibilityLabel("Photo \(index + 1) of \(photos.count) of \(meal.displayName)\(photo.by.map { ", by \($0)" } ?? "")")
                         .accessibilityAddTraits(.isImage)
                 }
             }

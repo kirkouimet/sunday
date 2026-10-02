@@ -104,6 +104,8 @@ enum PreviewData {
             photo.id = UUID()
             photo.createdAt = started
             photo.sortIndex = Int16(index)
+            photo.by = index == 0 ? "Dad" : "Ellie"
+            photo.createdAt = started.addingTimeInterval(Double(index) * 600)
             photo.imageData = illustration(symbol: "flame.fill", colors: (.systemRed, .brown), variant: index)
                 .jpegData(compressionQuality: 0.8)
             photo.thumbnailData = photo.imageData

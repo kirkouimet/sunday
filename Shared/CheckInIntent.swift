@@ -27,3 +27,24 @@ struct CheckInIntent: LiveActivityIntent {
         return .result()
     }
 }
+
+/// "I'm here" on a phone that hasn't said whose it is yet: opens the app,
+/// which asks "Which one are you?" and then checks in.
+struct CheckInAndAskIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "I'm at the table"
+    static var openAppWhenRun = true
+
+    @Parameter(title: "Dinner") var mealID: String
+
+    init() {}
+
+    init(mealID: UUID) {
+        self.mealID = mealID.uuidString
+    }
+
+    func perform() async throws -> some IntentResult {
+        guard let id = UUID(uuidString: mealID) else { return .result() }
+        try PendingCheckIns.add(.init(mealID: id))
+        return .result()
+    }
+}

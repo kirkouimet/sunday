@@ -104,7 +104,10 @@ enum FamilyNotifier {
         let snap = UNNotificationAction(identifier: LiveNotification.snapAction, title: "Snap a photo", options: [.foreground],
                                         icon: UNNotificationActionIcon(systemImageName: "camera.fill"))
         let live = UNNotificationCategory(identifier: LiveNotification.categoryID, actions: [checkIn, snap], intentIdentifiers: [])
-        UNUserNotificationCenter.current().setNotificationCategories([live])
+        // A phone that doesn't know whose it is opens the app to ask.
+        let askFirst = UNNotificationAction(identifier: LiveNotification.checkInAction, title: "I'm here", options: [.foreground])
+        let liveAsk = UNNotificationCategory(identifier: LiveNotification.askCategoryID, actions: [askFirst, snap], intentIdentifiers: [])
+        UNUserNotificationCenter.current().setNotificationCategories([live, liveAsk])
     }
 
     private static var knownLive: Set<String> {
@@ -128,10 +131,10 @@ enum FamilyNotifier {
         knownLive.insert(id.uuidString)
         // Only fresh news: a dinner that started a while ago isn't an invite.
         guard Date.now.timeIntervalSince(meal.liveAt ?? .distantPast) < 2 * 3600, !store.isCheckedIn(meal) else { return }
-        Task { await postLive(meal, id: id) }
+        Task { await postLive(meal, id: id, store: store) }
     }
 
-    private static func postLive(_ meal: Meal, id: UUID) async {
+    private static func postLive(_ meal: Meal, id: UUID, store: MealStore) async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
         let content = UNMutableNotificationContent()
@@ -139,7 +142,7 @@ enum FamilyNotifier {
         let who = meal.cook.flatMap { $0.isEmpty ? nil : $0 } ?? meal.liveBy
         content.body = who.map { "\($0)'s cooking \(meal.displayName). At the table?" } ?? "\(meal.displayName). At the table?"
         content.sound = .default
-        content.categoryIdentifier = LiveNotification.categoryID
+        content.categoryIdentifier = store.myName == nil ? LiveNotification.askCategoryID : LiveNotification.categoryID
         content.threadIdentifier = LiveNotification.categoryID
         content.userInfo = ["mealID": id.uuidString]
         let request = UNNotificationRequest(identifier: "live-\(id.uuidString)", content: content, trigger: nil)
@@ -157,6 +160,7 @@ enum FamilyNotifier {
 /// Identifiers for the "dinner is on" notification and its buttons.
 enum LiveNotification {
     static let categoryID = "live-dinner"
+    static let askCategoryID = "live-dinner-ask"
     static let checkInAction = "check-in"
     static let snapAction = "snap"
 }
@@ -178,7 +182,10 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
             switch response.actionIdentifier {
             case LiveNotification.checkInAction:
                 try? PendingCheckIns.add(.init(mealID: mealID))
-                await MainActor.run { CheckInIntent.onCheckIn?() }
+                await MainActor.run {
+                    CheckInIntent.onCheckIn?()
+                    if MealStore.shared.needsMyName { UIApplication.shared.open(DeepLink.live) }
+                }
             case LiveNotification.snapAction:
                 await MainActor.run { UIApplication.shared.open(DeepLink.snap) }
             default:

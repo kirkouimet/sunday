@@ -92,7 +92,10 @@ struct MealEditorView: View {
                 if sameDayMeal == nil {
                     nameSection
                     starsSection
-                    tableSection
+                    // During Sunday Live, people check themselves in.
+                    if (joinedMeal ?? meal)?.isLive != true {
+                        tableSection
+                    }
                     detailsSection
                 }
             }

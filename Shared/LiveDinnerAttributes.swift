@@ -12,6 +12,8 @@ struct LiveDinnerAttributes: ActivityAttributes {
         var photoCount: Int
         /// Whoever this phone belongs to, so "I'm here" turns into a check mark.
         var me: String?
+        /// The newest photo's thumbnail in the App Group, if any.
+        var photoFile: String?
 
         var isMeCheckedIn: Bool {
             guard let me else { return false }
