@@ -44,6 +44,7 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSCameraUsageDescription: Sunday uses the camera to take pictures of family dinners.
         NSMicrophoneUsageDescription: Sunday records the cook telling how they make a family recipe.
+        NSSpeechRecognitionUsageDescription: Sunday turns recorded recipes into text on your iPhone so you can read and search them.
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UIBackgroundModes:

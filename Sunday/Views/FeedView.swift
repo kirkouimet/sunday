@@ -144,6 +144,14 @@ struct FeedView: View {
             .overlay { emptyState(filtered: filtered) }
             .navigationTitle("Sunday")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        router.showIdeas = true
+                    } label: {
+                        Label("What's for dinner?", systemImage: "sparkles")
+                    }
+                    .accessibilityIdentifier("ideasButton")
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isAdding = true
@@ -326,19 +334,9 @@ struct TonightCard: View {
                         .font(.title3.bold())
                         .keepsake()
                         .lineLimit(3)
-                    HStack(spacing: 10) {
-                        Button {
-                            Task { try? await store.planSunday(memory.name) }
-                        } label: {
-                            Text("Make it Sunday").lineLimit(1).frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        Button {
-                            router.tab = .ideas
-                        } label: {
-                            Text("Other ideas").lineLimit(1)
-                        }
-                        .buttonStyle(.bordered)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) { planButtons(memory) }
+                        VStack(alignment: .leading, spacing: 8) { planButtons(memory) }
                     }
                 } else {
                     Text("What's for Sunday?")
@@ -348,7 +346,7 @@ struct TonightCard: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Button {
-                        router.tab = .ideas
+                        router.showIdeas = true
                     } label: {
                         Label("Find an idea", systemImage: "sparkles")
                     }
@@ -387,14 +385,6 @@ struct TonightCard: View {
 
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if streak >= 2 {
-                Label("\(streak)", systemImage: "flame.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.sundayAccent)
-                    .accessibilityLabel("\(streak) Sundays in a row")
-            }
-        }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -416,6 +406,22 @@ struct TonightCard: View {
         Button("We didn't") { store.confirmPlan(meal, eaten: false) }
             .buttonStyle(.bordered)
             .tint(.secondary)
+    }
+
+    @ViewBuilder
+    private func planButtons(_ memory: MealSummary) -> some View {
+        Button {
+            Task { try? await store.planSunday(memory.name) }
+        } label: {
+            Text("Make it Sunday").fixedSize()
+        }
+        .buttonStyle(.borderedProminent)
+        Button {
+            router.showIdeas = true
+        } label: {
+            Text("Other ideas").fixedSize()
+        }
+        .buttonStyle(.bordered)
     }
 
     private func memoryCaption(_ memory: MealSummary) -> String {

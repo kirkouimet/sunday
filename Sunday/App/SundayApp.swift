@@ -56,12 +56,14 @@ struct SundayApp: App {
 /// (from the widget) can open a dinner.
 @MainActor
 final class AppRouter: ObservableObject {
-    enum Tab: Hashable { case dinners, ideas, family }
+    enum Tab: Hashable { case dinners, family }
 
     @Published var tab: Tab = .dinners
     @Published var feedPath: [NSManagedObjectID] = []
     /// Set by the widget's "Snap it": open the camera for tonight's dinner.
     @Published var snapRequested = false
+    /// "What's for dinner?" ideas, as a sheet over the feed.
+    @Published var showIdeas = false
 
     func show(_ meal: Meal) {
         tab = .dinners
@@ -78,14 +80,15 @@ struct RootView: View {
             FeedView()
                 .tabItem { Label("Dinners", systemImage: "fork.knife") }
                 .tag(AppRouter.Tab.dinners)
-            SuggestView()
-                .tabItem { Label("Ideas", systemImage: "sparkles") }
-                .tag(AppRouter.Tab.ideas)
             FamilyView()
                 .tabItem { Label("Family", systemImage: "person.3") }
                 .tag(AppRouter.Tab.family)
         }
         .minimizingTabBarOnScroll()
+        .sheet(isPresented: $router.showIdeas) {
+            SuggestView()
+                .presentationDragIndicator(.visible)
+        }
         .sheet(item: Binding(
             get: { store.milestone.map(Milestone.init) },
             set: { if $0 == nil { store.milestone = nil } }

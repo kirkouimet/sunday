@@ -134,8 +134,6 @@ struct OccasionBadge: View {
                 .padding(.vertical, 3)
                 .background(.thinMaterial, in: Capsule())
                 .accessibilityLabel(holiday.name)
-        } else {
-            SeasonBadge(season: meal.season)
         }
     }
 }

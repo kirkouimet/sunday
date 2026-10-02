@@ -76,8 +76,16 @@ final class ScreenshotTests: XCTestCase {
             XCTFail("No add button")
         }
 
-        tapTab(app, "Ideas")
-        snap("7-ideas", variant)
+        // Ideas is a sheet over the feed now (two tabs: Dinners, Family).
+        let ideas = app.buttons["ideasButton"].firstMatch
+        if !ideas.waitForExistence(timeout: 3) { app.swipeDown(); app.swipeDown() }
+        if ideas.waitForExistence(timeout: 3) {
+            ideas.tap()
+            sleep(2)
+            snap("7-ideas", variant)
+            app.swipeDown(velocity: .fast)
+            sleep(1)
+        }
 
         tapTab(app, "Family")
         snap("8-family", variant)

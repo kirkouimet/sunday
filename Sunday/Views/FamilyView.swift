@@ -18,12 +18,13 @@ struct FamilyView: View {
     @State private var sharingShare: CKShare?
     @State private var isPreparingShare = false
     @State private var shareError: String?
+    @State private var path = NavigationPath()
 
     /// Dinners that happened (plans don't count until they're confirmed).
     private var history: [Meal] { meals.filter { !$0.isPlan } }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Form {
                 if !meals.isEmpty {
                     statsHero
@@ -35,6 +36,7 @@ struct FamilyView: View {
                 if !meals.isEmpty {
                     funStats
                 }
+                SundayBookSection(meals: history)
                 accountWarning
                 if store.role != .solo {
                     familySection
@@ -103,7 +105,7 @@ struct FamilyView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
         }
     }
 
@@ -115,12 +117,16 @@ struct FamilyView: View {
 
     private var memberRow: some View {
         HStack(spacing: -6) {
+            // Buttons, not NavigationLinks: inside a Form row each link grows
+            // its own chevron.
             ForEach(members, id: \.self) { name in
-                NavigationLink(value: PersonRoute(name: name)) {
+                Button {
+                    path.append(PersonRoute(name: name))
+                } label: {
                     CookAvatar(name: name, size: 36)
                         .overlay(Circle().strokeBorder(Color(.secondarySystemGroupedBackground), lineWidth: 2))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
                 .accessibilityLabel(name)
             }
             if store.role != .participant {
@@ -145,33 +151,12 @@ struct FamilyView: View {
     /// Little superlatives that make this tab a keepsake, not settings.
     @ViewBuilder
     private var funStats: some View {
-        let dishes = Suggestions.group(history.compactMap { m -> MealSummary? in
-            guard let id = m.id, let date = m.date else { return nil }
-            return MealSummary(id: id, name: m.displayName, date: date, stars: nil)
-        })
-        let mostMade = dishes.max { $0.timesEaten < $1.timesEaten }
-        let cookCounts = Dictionary(grouping: history.compactMap { $0.cook?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }) { $0.lowercased() }
-        let topCook = cookCounts.max { $0.value.count < $1.value.count }
         let first = history.last
         let attendance = Attendance.counts(in: history.compactMap { m -> Attendance.Dinner? in
             guard let id = m.id, let date = m.date else { return nil }
             return Attendance.Dinner(id: id, date: date, people: Attendance.decode(m.attendees))
         })
         Section {
-            // Superlatives only once there's something to compare.
-            if let mostMade, mostMade.timesEaten >= 3 {
-                LabeledContent("Most made") {
-                    Text("\(mostMade.displayName) · \(mostMade.timesEaten)×").keepsake()
-                }
-            }
-            if cookCounts.count >= 2, let topCook, let name = topCook.value.first {
-                LabeledContent("Head chef") {
-                    HStack(spacing: 6) {
-                        CookAvatar(name: name, size: 20)
-                        Text("\(name) · \(topCook.value.count) dinners")
-                    }
-                }
-            }
             if !attendance.isEmpty {
                 NavigationLink {
                     SundaysWithView(counts: attendance)

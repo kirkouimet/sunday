@@ -23,6 +23,10 @@ struct MealDetailView: View {
     @State private var recipeAudio: Data?
     @State private var isRecipeExpanded = false
     @State private var hadStarsOnOpen = true
+    /// Set when recording a guest's story instead of the dish's recipe.
+    @State private var storyTeller: String?
+    @State private var isTranscribing = false
+    @State private var isChangingStars = false
     @StateObject private var voice = VoiceMemo()
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -68,7 +72,7 @@ struct MealDetailView: View {
                         }
                     }
                 }
-                    .navigationTitle("How we make \(meal.displayName)")
+                    .navigationTitle(storyTeller.map { "\($0)'s story" } ?? "How we make \(meal.displayName)")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
@@ -77,7 +81,15 @@ struct MealDetailView: View {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Save") {
                                 if voice.isRecording { voice.stopRecording() }
-                                store.setRecipe(recipeText, audio: voice.recorded ?? recipeAudio, for: recipeSource ?? meal)
+                                let audio = voice.recorded ?? recipeAudio
+                                if let storyTeller {
+                                    // A guest's story: its own place on this dinner. It can
+                                    // never overwrite the dish's recipe.
+                                    store.setStory(recipeText, audio: audio, by: storyTeller, for: meal)
+                                } else {
+                                    let target = recipeSource ?? meal
+                                    store.setRecipe(recipeText, audio: audio, by: target.recipeBy ?? target.cook, for: target)
+                                }
                                 voice.discardRecording()
                                 isWritingRecipe = false
                             }
@@ -122,21 +134,6 @@ struct MealDetailView: View {
                     }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    let tags = FoodTags.decode(meal.tags)
-                    if !tags.isEmpty {
-                        HStack(spacing: 6) {
-                            ForEach(tags, id: \.self) { tag in
-                                Text(FoodTags.displayName(tag))
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Tags: \(tags.map(FoodTags.displayName).joined(separator: ", "))")
-                    }
                 }
                 .padding(.horizontal)
 
@@ -150,6 +147,8 @@ struct MealDetailView: View {
                 }
 
                 atTheTable
+
+                storyCard
 
                 recipeCard
 
@@ -168,7 +167,23 @@ struct MealDetailView: View {
         .ignoresSafeArea(edges: .top)
     }
 
+    @ViewBuilder
     private var yourStars: some View {
+        if stars > 0, !isChangingStars {
+            HStack(spacing: 8) {
+                Text("Your stars").font(.subheadline).foregroundStyle(.secondary)
+                CompactStars(stars: Double(stars))
+                Spacer()
+                Button("Change") { withAnimation { isChangingStars = true } }
+                    .font(.subheadline)
+            }
+            .padding(.horizontal)
+        } else {
+            fullStars
+        }
+    }
+
+    private var fullStars: some View {
         VStack(alignment: .leading, spacing: 8) {
                     Text("Your stars")
                         .font(.headline)
@@ -201,9 +216,9 @@ struct MealDetailView: View {
                             NavigationLink(value: PersonRoute(name: person)) {
                                 VStack(spacing: 4) {
                                     CookAvatar(name: person, size: 40)
-                                    Text(person).font(.caption).lineLimit(1)
+                                    Text(person).font(.caption).lineLimit(2).multilineTextAlignment(.center)
                                 }
-                                .frame(width: 64)
+                                .frame(width: 72)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(person)
@@ -220,11 +235,12 @@ struct MealDetailView: View {
                     if moment.hasPrefix("First Sunday with "), store.canEdit(meal) {
                         let guest = String(moment.dropFirst("First Sunday with ".count))
                         Button {
-                            recipeText = ""
-                            recipeAudio = nil
+                            storyTeller = guest
+                            recipeText = meal.storyBy == guest ? (meal.story ?? "") : ""
+                            recipeAudio = meal.storyBy == guest ? meal.storyAudio : nil
                             isWritingRecipe = true
                         } label: {
-                            Label("Ask \(guest) how they make something", systemImage: "mic")
+                            Label(meal.storyBy == guest ? "Hear \(guest)'s story" : "Ask \(guest) to tell a recipe", systemImage: "mic")
                                 .font(.subheadline)
                         }
                     }
@@ -232,6 +248,38 @@ struct MealDetailView: View {
             }
             .padding(.horizontal)
             .accessibilityElement(children: .contain)
+        }
+    }
+
+    /// A guest's story from this dinner, in their voice.
+    @ViewBuilder
+    private var storyCard: some View {
+        if let teller = meal.storyBy, meal.story != nil || meal.storyAudio != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    CookAvatar(name: teller, size: 28)
+                    Text("\(teller)'s story")
+                        .font(.title3.weight(.semibold))
+                        .keepsake()
+                }
+                if let audio = meal.storyAudio {
+                    Button {
+                        voice.isPlaying ? voice.stop() : voice.play(audio)
+                    } label: {
+                        Label(voice.isPlaying ? "Stop" : "Hear \(teller) tell it",
+                              systemImage: voice.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                            .font(.headline)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                if let text = meal.story {
+                    Text(text).italic().keepsake()
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal)
         }
     }
 
@@ -250,8 +298,8 @@ struct MealDetailView: View {
                             Text("How we make it")
                                 .font(.title3.weight(.semibold))
                                 .keepsake()
-                            if let cook = familyRecipe.cook, !cook.isEmpty {
-                                Text("\(cook)'s way")
+                            if let teller = familyRecipe.recipeBy ?? familyRecipe.cook, !teller.isEmpty {
+                                Text("\(teller)'s way")
                                     .font(.subheadline)
                                     .italic()
                                     .keepsake()
@@ -272,7 +320,7 @@ struct MealDetailView: View {
                     Button {
                         voice.isPlaying ? voice.stop() : voice.play(audio)
                     } label: {
-                        Label(voice.isPlaying ? "Stop" : "Hear \(familyRecipe.cook.flatMap { $0.isEmpty ? nil : $0 } ?? "them") tell it",
+                        Label(voice.isPlaying ? "Stop" : "Hear \((familyRecipe.recipeBy ?? familyRecipe.cook).flatMap { $0.isEmpty ? nil : $0 } ?? "them") tell it",
                               systemImage: voice.isPlaying ? "stop.circle.fill" : "play.circle.fill")
                             .font(.headline)
                     }
@@ -287,6 +335,7 @@ struct MealDetailView: View {
                     }
                     if store.canEdit(familyRecipe) {
                         Button("Edit recipe") {
+                            storyTeller = nil
                             recipeText = familyRecipe.recipe ?? ""
                             recipeAudio = familyRecipe.recipeAudio
                             isWritingRecipe = true
@@ -300,7 +349,9 @@ struct MealDetailView: View {
             .padding(.horizontal)
         } else if let dish, dish.timesEaten >= 2, store.canEdit(meal) {
             Button {
+                storyTeller = nil
                 recipeText = ""
+                recipeAudio = nil
                 isWritingRecipe = true
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
@@ -326,6 +377,14 @@ struct MealDetailView: View {
             Button {
                 if voice.isRecording {
                     voice.stopRecording()
+                    // Voice → text, on the device, so it can be read and searched.
+                    if recipeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let audio = voice.recorded {
+                        isTranscribing = true
+                        Task {
+                            if let text = await Transcriber.transcribe(audio) { recipeText = text }
+                            isTranscribing = false
+                        }
+                    }
                 } else {
                     Task { await voice.startRecording() }
                 }
@@ -336,7 +395,10 @@ struct MealDetailView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(voice.isRecording ? .red : Color.sundayAccent)
-            if voice.isRecording {
+            if isTranscribing {
+                ProgressView()
+                Text("Writing it down…").font(.footnote).foregroundStyle(.secondary)
+            } else if voice.isRecording {
                 Text(Duration.seconds(voice.elapsed).formatted(.time(pattern: .minuteSecond)))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
@@ -483,7 +545,7 @@ struct MealDetailView: View {
             }
             layout {
                 HStack(spacing: 6) {
-                    Text(summary.date.dinnerFormatted)
+                    Text(summary.date.formatted(.dateTime.month(.abbreviated).day().year()))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(Season.of(summary.date, hemisphere: .current).emoji)
                         .accessibilityHidden(true)
@@ -496,8 +558,6 @@ struct MealDetailView: View {
                 if !typeSize.isAccessibilitySize { Spacer(minLength: 4) }
                 if let stars = summary.stars {
                     YourStarsLabel(stars: Double(stars), size: 11)
-                } else if isThis {
-                    Text("Not rated").font(.caption).foregroundStyle(.secondary)
                 }
             }
             .padding(.bottom, isLast ? 0 : 20)

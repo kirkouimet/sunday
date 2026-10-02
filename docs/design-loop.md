@@ -10,6 +10,7 @@ Canvas with screenshots and pinned critiques: claude.ai/design ("Sunday Design R
 | Loop | Maturity | 🚀 | 🧱 | 🎨 | Biggest idea |
 |---|---|---|---|---|---|
 | 0 (baseline) | – | 3 | 6 | 8 | "Tonight" moment; cooks as people; Ideas as a decision tool |
+| 4 | 8/10 | 2 | 3 | 2 | 5 ✂️ cuts recommended (new) · Sunday Book (printed yearbook); voice → text · 3 bugs incl. data loss. Critic: "marginal value is now negative" |
 | 3 | 8/10 | 3 | 3 | 4 | Interactive Lock Screen (rate/snap without opening the app); people as pages; heirloom voice · 3 bugs. Critic: "almost all refinement… screens at marginal gains" |
 | 2 | 7/10 | 3 | 4 | 2 | Who was at the table (attendance); Sunday on the Lock Screen; heirloom recipe card · 5 bugs (mostly wiring of round-1 behaviors) |
 | 1 | 6/10 | 2 (+2 public) | 4 (+2 public) | 4 (+1 public) | "The table remembers" (private insight); Sunday as a ritual (plan the cook ahead) · 3 bugs |
@@ -66,3 +67,13 @@ Critique (8/10): "almost all refinement… the screens are at marginal gains. A 
 - 🐛 The private insight now sits under your stars on the hero card (no longer hijacks the Tonight card, survives relaunch); "Different dinner" + same name offers "Same dinner? Add your photos".
 - 🧱 Detail: unrated stars move under the facts; recipe collapses to "How we make it · Mom's way ›"; fixed-width faces.
 - 🎨 Large text: hero rating stacks, Ideas keeps its title (inline), Ideas words sit below the photo; hero 5:3 under a Tonight card; bottom content margin for the floating tab bar; season chips only after 24+ dinners.
+
+## Loop 4 → 5: the subtraction loop (implemented)
+
+Critique (8/10): "the marginal value is now negative: each round adds a concept without removing one… a step-change now means leaving the phone screen: **the Sunday Book**." First round to recommend cuts (✂️).
+
+- 🐛 **Data loss fixed**: "Ask Grandma June" now records *her story* on that dinner (`story` / `storyAudio` / `storyBy`), never over the dish's recipe; the recipe keeps its teller (`recipeBy`), so "Hear Mom tell it" plays Mom.
+- ✂️ **Cut**: the Ideas tab (now a sheet behind ✨ and "Other ideas", so 2 tabs: Dinners, Family); food-tag chips on Detail (tags still power search); season chip on the hero (holidays only); the streak flame on the Tonight card; Head chef / Most made superlatives; the second full star block (rated dinners show "Your stars ★4 · Change").
+- 🚀 **Voice → text**: on-device Speech transcribes recordings into the recipe text (never leaves the phone).
+- 🚀 **The Sunday Book**: Family tab makes a printable PDF yearbook: cover with who was around the table, then a page per dinner (photo, cook, at the table, notes, *How we make it · Mom's way*, guest stories). Share or print.
+- 🐛 Family avatar row uses buttons (no stray chevrons) and keeps faces individually accessible; plan buttons wrap at large text; names in At the table wrap to two lines; timeline uses short dates without "Not rated".

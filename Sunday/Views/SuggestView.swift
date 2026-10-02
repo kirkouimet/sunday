@@ -45,6 +45,7 @@ struct SuggestView: View {
                                          Task {
                                              try? await store.planSunday(name)
                                              router.tab = .dinners
+                                             router.showIdeas = false
                                          }
                                      }) {
                             withAnimation(reduceMotion ? nil : .spring(duration: 0.45)) {

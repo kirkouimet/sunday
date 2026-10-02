@@ -22,6 +22,13 @@ final class Meal: NSManagedObject, Identifiable {
     @NSManaged var isPlan: Bool
     /// The cook telling the recipe in their own voice (AAC).
     @NSManaged var recipeAudio: Data?
+    /// Who told the recipe (defaults to the cook).
+    @NSManaged var recipeBy: String?
+    /// A guest's own story from this dinner ("Grandma June: how I make
+    /// pierogi"), kept apart from the dish's recipe so it never overwrites it.
+    @NSManaged var story: String?
+    @NSManaged var storyAudio: Data?
+    @NSManaged var storyBy: String?
     @NSManaged var createdAt: Date?
     @NSManaged var photos: NSSet?
 
@@ -119,6 +126,10 @@ enum SundayModel {
             attribute("recipe", .stringAttributeType),
             attribute("isPlan", .booleanAttributeType, default: false),
             attribute("recipeAudio", .binaryDataAttributeType, externalStorage: true),
+            attribute("recipeBy", .stringAttributeType),
+            attribute("story", .stringAttributeType),
+            attribute("storyAudio", .binaryDataAttributeType, externalStorage: true),
+            attribute("storyBy", .stringAttributeType),
             attribute("createdAt", .dateAttributeType),
             mealPhotos,
         ])

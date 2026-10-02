@@ -214,11 +214,22 @@ final class MealStore: ObservableObject {
         }
     }
 
-    func setRecipe(_ recipe: String, audio: Data?, for meal: Meal) {
+    func setRecipe(_ recipe: String, audio: Data?, by teller: String?, for meal: Meal) {
         guard !meal.isGone else { return }
         let trimmed = recipe.trimmingCharacters(in: .whitespacesAndNewlines)
         meal.recipe = trimmed.isEmpty ? nil : trimmed
         meal.recipeAudio = audio
+        meal.recipeBy = teller
+        saveQuietly()
+    }
+
+    /// A guest's story lives on the dinner itself, never on the dish recipe.
+    func setStory(_ story: String, audio: Data?, by teller: String, for meal: Meal) {
+        guard !meal.isGone else { return }
+        let trimmed = story.trimmingCharacters(in: .whitespacesAndNewlines)
+        meal.story = trimmed.isEmpty ? nil : trimmed
+        meal.storyAudio = audio
+        meal.storyBy = teller
         saveQuietly()
     }
 
