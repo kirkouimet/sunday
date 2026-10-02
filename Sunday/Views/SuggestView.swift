@@ -45,7 +45,7 @@ struct SuggestView: View {
                     .disabled(suggestions.dishes.isEmpty)
 
                     if let surprise {
-                        dishRow(surprise, detail: "Last had \(surprise.lastEaten.dinnerFormatted)")
+                        dishRow(surprise, detail: "Last had \(SundayCalendar.timeAgo(days: surprise.daysSinceLastEaten(now: .now)).lowercased())")
                     }
                 }
 
@@ -62,7 +62,7 @@ struct SuggestView: View {
                 if !favorites.isEmpty {
                     Section {
                         ForEach(favorites) { dish in
-                            dishRow(dish, detail: "\(dish.daysSinceLastEaten(now: .now)) days since we had it")
+                            dishRow(dish, detail: "Last had \(SundayCalendar.timeAgo(days: dish.daysSinceLastEaten(now: .now)).lowercased())")
                         }
                     } header: {
                         Text("Favorites we haven't had in a while")

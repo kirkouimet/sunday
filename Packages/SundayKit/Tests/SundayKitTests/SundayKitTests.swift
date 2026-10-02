@@ -344,3 +344,17 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertEqual(Holidays.holiday(on: date(2026, 4, 5), calendar: calendar)?.name, "Easter")
     }
 }
+
+final class TimeAgoTests: XCTestCase {
+    func testTimeAgo() {
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 0), "Today")
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 1), "Yesterday")
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 5), "5 days ago")
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 7), "Last week")
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 21), "3 weeks ago")
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 74), "2 months ago")
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 214), "7 months ago")
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 368), "About a year ago")
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 800), "2 years ago")
+    }
+}

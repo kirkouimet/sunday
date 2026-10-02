@@ -41,6 +41,20 @@ public enum SundayCalendar {
         max(1, calendar.component(.year, from: now) - calendar.component(.year, from: date))
     }
 
+    /// "Last week", "3 weeks ago", "4 months ago", "About a year ago"…
+    public static func timeAgo(days: Int) -> String {
+        switch days {
+        case ..<1: return "Today"
+        case 1: return "Yesterday"
+        case 2..<7: return "\(days) days ago"
+        case 7..<14: return "Last week"
+        case 14..<45: return "\(days / 7) weeks ago"
+        case 45..<320: return "\(max(2, Int((Double(days) / 30.4).rounded()))) months ago"
+        case 320..<500: return "About a year ago"
+        default: return "\(Int((Double(days) / 365.25).rounded())) years ago"
+        }
+    }
+
     public static let milestones: Set<Int> = [1, 10, 25, 50, 52, 100, 150, 200, 250, 300, 365, 500, 1000]
 
     /// A celebration line when `count` dinners is worth marking, else nil.

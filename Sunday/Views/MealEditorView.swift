@@ -233,7 +233,7 @@ struct MealEditorView: View {
                   systemImage: "clock.arrow.circlepath")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-        } else if !trimmed.isEmpty, !isEditing, joinedMeal == nil {
+        } else if !trimmed.isEmpty, !isEditing, joinedMeal == nil, nameSuggestions.isEmpty, focusedField != .name {
             Label("A new one for the family!", systemImage: "sparkle")
                 .font(.footnote)
                 .foregroundStyle(Color.sundayAccent)
