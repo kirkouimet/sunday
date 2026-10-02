@@ -25,11 +25,26 @@ struct MealEditorView: View {
     @State private var errorMessage: String?
     @State private var didLoad = false
     @State private var didPickDateFromPhoto = false
+    /// Set when you choose to add your photos to a dinner someone else
+    /// already posted for the same day, instead of creating a duplicate.
+    @State private var joinedMeal: Meal?
+    @State private var dismissedSameDayPrompt = false
     @FocusState private var focusedField: Field?
 
     private enum Field { case name, cook, notes }
 
     private var isEditing: Bool { meal != nil }
+    /// The dinner being saved into: the one passed in, or one we joined.
+    private var targetMeal: Meal? { meal ?? joinedMeal }
+
+    /// A dinner already logged for the draft's day that you could join.
+    private var sameDayMeal: Meal? {
+        guard !isEditing, joinedMeal == nil, !dismissedSameDayPrompt else { return nil }
+        return allMeals.first { other in
+            guard let date = other.date, !other.isGone else { return false }
+            return Calendar.current.isDate(date, inSameDayAs: draft.date) && store.canEdit(other)
+        }
+    }
     private var hasChanges: Bool { draft.fingerprint != initialFingerprint }
     private var canSave: Bool {
         !isSaving && (!draft.name.trimmingCharacters(in: .whitespaces).isEmpty || !draft.photos.isEmpty)
@@ -37,7 +52,7 @@ struct MealEditorView: View {
 
     private var otherMeals: [MealSummary] {
         allMeals.compactMap { m -> MealSummary? in
-            guard m.objectID != meal?.objectID, let id = m.id, let date = m.date else { return nil }
+            guard m.objectID != targetMeal?.objectID, let id = m.id, let date = m.date else { return nil }
             return MealSummary(id: id, name: m.displayName, date: date, stars: nil)
         }
     }
@@ -63,11 +78,20 @@ struct MealEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let sameDayMeal {
+                    sameDayPrompt(sameDayMeal)
+                }
+                if let joinedMeal {
+                    Section {
+                        Label("Adding your photos and stars to \(joinedMeal.displayName)", systemImage: "person.2.fill")
+                            .font(.subheadline)
+                    }
+                }
                 photosSection
                 dinnerSection
                 starsSection
             }
-            .navigationTitle(isEditing ? "Edit dinner" : "New dinner")
+            .navigationTitle(isEditing ? "Edit dinner" : joinedMeal != nil ? "Add to dinner" : "New dinner")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -209,7 +233,7 @@ struct MealEditorView: View {
                   systemImage: "clock.arrow.circlepath")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-        } else if !trimmed.isEmpty, !isEditing {
+        } else if !trimmed.isEmpty, !isEditing, joinedMeal == nil {
             Label("A new one for the family!", systemImage: "sparkle")
                 .font(.footnote)
                 .foregroundStyle(Color.sundayAccent)
@@ -229,6 +253,47 @@ struct MealEditorView: View {
         } footer: {
             Label("Only you see your stars. Not even the cook.", systemImage: "lock.fill")
         }
+    }
+
+    private func sameDayPrompt(_ other: Meal) -> some View {
+        Section {
+            HStack(spacing: 12) {
+                PhotoThumbnail(photo: other.sortedPhotos.first)
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Calendar.current.isDateInToday(other.date ?? .distantPast)
+                         ? "Tonight's dinner is already posted" : "A dinner is already posted for this day")
+                        .font(.subheadline.weight(.semibold))
+                    Text(other.displayName)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            Button {
+                join(other)
+            } label: {
+                Label("Add my photos to it", systemImage: "photo.badge.plus")
+            }
+            Button("This is a different dinner") {
+                withAnimation { dismissedSameDayPrompt = true }
+            }
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Switch from "new dinner" to adding into an existing one: keep its
+    /// details and photos, append the photos you've picked so far.
+    private func join(_ other: Meal) {
+        var merged = MealDraft(meal: other, stars: store.stars(for: other))
+        merged.photos.append(contentsOf: draft.photos.filter { $0.existing == nil })
+        if merged.stars == 0 { merged.stars = draft.stars }
+        withAnimation {
+            joinedMeal = other
+            draft = merged
+        }
+        focusedField = nil
     }
 
     private func chipRow(_ items: [String], action: @escaping (String) -> Void) -> some View {
@@ -288,7 +353,7 @@ struct MealEditorView: View {
         focusedField = nil
         Task {
             do {
-                try await store.save(draft, editing: meal)
+                try await store.save(draft, editing: targetMeal)
                 if !draft.cook.isEmpty { lastCook = draft.cook }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 dismiss()
