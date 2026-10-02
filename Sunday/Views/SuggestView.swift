@@ -13,6 +13,7 @@ struct SuggestView: View {
     private var ratings: FetchedResults<Rating>
 
     @State private var surprise: Dish?
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var suggestions: Suggestions {
@@ -98,7 +99,7 @@ struct SuggestView: View {
                     )
                 }
             }
-            .navigationTitle("What's for dinner?")
+            .navigationTitle(typeSize.isAccessibilitySize ? "Ideas" : "What's for dinner?")
             .navigationDestination(for: NSManagedObjectID.self) { id in
                 if let meal = try? store.context.existingObject(with: id) as? Meal {
                     MealDetailView(meal: meal)
@@ -132,19 +133,34 @@ private struct SuggestionRow: View {
     let detail: String
     let stars: Double?
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(spacing: 12) {
-            PhotoThumbnail(photo: meal.sortedPhotos.first)
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.body.weight(.medium)).lineLimit(1)
+        if typeSize.isAccessibilitySize {
+            // Stack everything so long names and big text have the full width.
+            VStack(alignment: .leading, spacing: 6) {
+                thumbnail
+                Text(title).font(.body.weight(.medium)).lineLimit(3)
                 Text(detail).font(.caption).foregroundStyle(.secondary)
+                if let stars { CompactStars(stars: stars) }
             }
-            Spacer()
-            if let stars {
-                YourStarsLabel(stars: stars, size: 10)
+            .padding(.vertical, 4)
+        } else {
+            HStack(spacing: 12) {
+                thumbnail
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.body.weight(.medium)).lineLimit(2)
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                if let stars { CompactStars(stars: stars) }
             }
         }
+    }
+
+    private var thumbnail: some View {
+        PhotoThumbnail(photo: meal.sortedPhotos.first)
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

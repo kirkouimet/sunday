@@ -65,6 +65,7 @@ struct RootView: View {
                 .tabItem { Label("Family", systemImage: "person.3") }
                 .tag(AppRouter.Tab.family)
         }
+        .minimizingTabBarOnScroll()
         .sheet(item: Binding(
             get: { store.milestone.map(Milestone.init) },
             set: { if $0 == nil { store.milestone = nil } }
@@ -101,6 +102,22 @@ struct MilestoneView: View {
         .padding(32)
         .onAppear { if !reduceMotion { bounce.toggle() } }
         .sensoryFeedback(.success, trigger: bounce)
+    }
+}
+
+extension View {
+    /// iOS 26: tuck the tab bar away while scrolling through dinners.
+    @ViewBuilder
+    func minimizingTabBarOnScroll() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            self.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
     }
 }
 

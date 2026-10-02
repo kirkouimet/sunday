@@ -53,7 +53,7 @@ struct StarRatingView: View {
                 } label: {
                     Image(systemName: value <= stars ? "star.fill" : "star")
                         .font(.system(size: scaledSize))
-                        .foregroundStyle(value <= stars ? Color.star : Color.secondary.opacity(0.5))
+                        .foregroundStyle(value <= stars ? AnyShapeStyle(Color.star) : AnyShapeStyle(.tertiary))
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
@@ -109,9 +109,9 @@ struct YourStarsLabel: View {
     var size: CGFloat = 12
 
     var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "person.fill")
-                .font(.caption2)
+        HStack(spacing: 4) {
+            Text("You")
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
             StarsLabel(stars: stars, size: size)
         }
@@ -135,6 +135,24 @@ struct OccasionBadge: View {
         } else {
             SeasonBadge(season: meal.season)
         }
+    }
+}
+
+/// "★ 4.8 · you" — one quiet label instead of a row of five stars, for lists
+/// where nearly everything is highly rated.
+struct CompactStars: View {
+    let stars: Double
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "star.fill")
+                .foregroundStyle(Color.star)
+            Text(stars.formatted(.number.precision(.fractionLength(stars == stars.rounded() ? 0 : 1))))
+                .monospacedDigit()
+        }
+        .font(.subheadline.weight(.semibold))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your rating, \(starsDescription(stars))")
     }
 }
 

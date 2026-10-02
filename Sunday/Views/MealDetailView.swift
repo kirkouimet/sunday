@@ -18,6 +18,7 @@ struct MealDetailView: View {
     @State private var stars = 0
     @State private var isEditing = false
     @State private var isConfirmingDelete = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var dish: Dish? {
         Suggestions(meals: store.summaries(meals: Array(allMeals), ratings: Array(ratings)), hemisphere: .current)
@@ -32,8 +33,11 @@ struct MealDetailView: View {
                 content
             }
         }
-        .navigationTitle(meal.isGone ? "" : meal.displayName)
+        // The big title on the page is the title; keep the bar clear so the
+        // photo runs up under it.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar { if !meal.isGone { toolbarContent } }
         .sheet(isPresented: $isEditing) {
             MealEditorView(meal: meal)
@@ -84,19 +88,19 @@ struct MealDetailView: View {
                 }
                 .padding(.horizontal)
 
+                if let notes = meal.notes, !notes.isEmpty {
+                    notesCard(notes)
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Your stars")
                         .font(.headline)
-                    StarRatingView(stars: $stars, size: 32)
+                    StarRatingView(stars: $stars, size: 28)
                     Label("Only you see your stars. Not even the cook.", systemImage: "lock.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal)
-
-                if let notes = meal.notes, !notes.isEmpty {
-                    notesCard(notes)
-                }
 
                 if let dish, dish.timesEaten > 1 {
                     history(dish)
@@ -106,6 +110,7 @@ struct MealDetailView: View {
             .frame(maxWidth: 720)
             .frame(maxWidth: .infinity)
         }
+        .ignoresSafeArea(edges: .top)
     }
 
     @ToolbarContentBuilder
@@ -159,7 +164,7 @@ struct MealDetailView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: photos.count > 1 ? .automatic : .never))
-            .frame(height: 380)
+            .frame(height: 420)
             .clipShape(RoundedRectangle(cornerRadius: 0))
         }
     }
@@ -179,6 +184,59 @@ struct MealDetailView: View {
         .padding(.horizontal)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Notes: \(notes)")
+    }
+
+    /// One stop on the dish's timeline; other dinners link to their page.
+    @ViewBuilder
+    private func timelineRow(_ summary: MealSummary, isLast: Bool) -> some View {
+        let isThis = summary.id == meal.id
+        let row = HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 0) {
+                Circle()
+                    .fill(isThis ? Color.sundayAccent : Color.secondary.opacity(0.5))
+                    .frame(width: 10, height: 10)
+                    .padding(.top, 5)
+                if !isLast {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(width: 1)
+                        .frame(maxHeight: .infinity)
+                }
+            }
+            .frame(width: 10)
+
+            let layout = typeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                : AnyLayout(HStackLayout(spacing: 8))
+            layout {
+                HStack(spacing: 6) {
+                    Text(summary.date.dinnerFormatted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(Season.of(summary.date, hemisphere: .current).emoji)
+                        .accessibilityHidden(true)
+                    if isThis {
+                        Text("This dinner")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.sundayAccent)
+                    }
+                }
+                if !typeSize.isAccessibilitySize { Spacer(minLength: 4) }
+                if let stars = summary.stars {
+                    YourStarsLabel(stars: Double(stars), size: 11)
+                }
+            }
+            .padding(.bottom, isLast ? 0 : 14)
+        }
+        .font(.subheadline)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+
+        if !isThis, let other = store.meal(withID: summary.id) {
+            NavigationLink(value: other.objectID) { row }
+                .buttonStyle(.plain)
+        } else {
+            row.accessibilityAddTraits(.isSelected)
+        }
     }
 
     private func history(_ dish: Dish) -> some View {
@@ -202,22 +260,10 @@ struct MealDetailView: View {
             Text("\(dish.timesEaten) dinners · first on \(dish.meals.last?.date.dinnerFormatted ?? "")")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            ForEach(dish.meals) { summary in
-                let isThis = summary.id == meal.id
-                HStack {
-                    Image(systemName: isThis ? "largecircle.fill.circle" : "circle")
-                        .foregroundStyle(isThis ? Color.sundayAccent : Color.secondary)
-                    Text(summary.date.dinnerFormatted)
-                    Text(Season.of(summary.date, hemisphere: .current).emoji)
-                        .accessibilityHidden(true)
-                    Spacer()
-                    if let stars = summary.stars {
-                        YourStarsLabel(stars: Double(stars), size: 11)
-                    }
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(dish.meals.enumerated()), id: \.element.id) { index, summary in
+                    timelineRow(summary, isLast: index == dish.meals.count - 1)
                 }
-                .font(.subheadline)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(isThis ? .isSelected : [])
             }
         }
         .padding()

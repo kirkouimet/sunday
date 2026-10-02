@@ -169,21 +169,58 @@ struct MealEditorView: View {
                     .padding(.vertical, 4)
                 }
             }
-            HStack {
+            if draft.photos.isEmpty {
+                emptyPhotoTile
+            } else {
+                HStack {
+                    if CameraPicker.isAvailable {
+                        Button {
+                            isShowingCamera = true
+                        } label: {
+                            Label("Take photo", systemImage: "camera.fill")
+                        }
+                        Spacer()
+                    }
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 10, matching: .images) {
+                        Label("Add more", systemImage: "photo.badge.plus")
+                    }
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+    }
+
+    /// With no photo yet, adding one is the first thing to do; make it big.
+    private var emptyPhotoTile: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "fork.knife.circle.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(Color.sundayAccent)
+                .accessibilityHidden(true)
+            Text("Add a photo of dinner")
+                .font(.headline)
+            HStack(spacing: 12) {
                 if CameraPicker.isAvailable {
                     Button {
                         isShowingCamera = true
                     } label: {
-                        Label("Take photo", systemImage: "camera.fill")
+                        Label("Camera", systemImage: "camera.fill")
                     }
-                    Spacer()
+                    .buttonStyle(.borderedProminent)
                 }
                 PhotosPicker(selection: $pickerItems, maxSelectionCount: 10, matching: .images) {
-                    Label("Choose photos", systemImage: "photo.on.rectangle")
+                    Label("Library", systemImage: "photo.on.rectangle")
                 }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.borderless)
         }
+        .frame(maxWidth: .infinity, minHeight: 170)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.sundayAccent.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+        )
+        .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+        .listRowBackground(Color.clear)
     }
 
     private var dinnerSection: some View {
@@ -300,9 +337,14 @@ struct MealEditorView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack {
                 ForEach(items, id: \.self) { item in
-                    Button(item) { action(item) }
-                        .buttonStyle(.bordered)
-                        .font(.footnote)
+                    Button { action(item) } label: {
+                        Text(item)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: 260)
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.footnote)
                 }
             }
         }

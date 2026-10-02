@@ -21,6 +21,9 @@ struct FamilyView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if !meals.isEmpty {
+                    statsHero
+                }
                 accountWarning
                 familySection
                 remindersSection
@@ -33,14 +36,6 @@ struct FamilyView: View {
                 }
 
                 Section {
-                    LabeledContent("Dinners logged", value: "\(meals.count)")
-                    let streak = SundayCalendar.streak(mealDates: meals.compactMap(\.date))
-                    if streak > 0 {
-                        LabeledContent("Sundays in a row", value: "\(streak)")
-                    }
-                    if let first = meals.last?.date {
-                        LabeledContent("Since", value: first.dinnerFormatted)
-                    }
                 } footer: {
                     Text("Sunday stores everything in iCloud. There are no accounts or servers, and no ads.")
                 }
@@ -58,6 +53,35 @@ struct FamilyView: View {
                 Text(shareError ?? "")
             }
             .task { await store.refreshAccountStatus() }
+        }
+    }
+
+    /// The keepsake number: how many dinners this family has shared.
+    private var statsHero: some View {
+        let streak = SundayCalendar.streak(mealDates: meals.compactMap(\.date))
+        return Section {
+            VStack(spacing: 6) {
+                Text("\(meals.count)")
+                    .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.sundayAccent)
+                    .contentTransition(.numericText())
+                Text(meals.count == 1 ? "dinner together" : "dinners together")
+                    .font(.headline)
+                if let first = meals.last?.date {
+                    Text("Since \(first.formatted(.dateTime.month(.wide).year()))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                if streak >= 2 {
+                    Label("\(streak) Sundays in a row", systemImage: "flame.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.sundayAccent)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .accessibilityElement(children: .combine)
         }
     }
 

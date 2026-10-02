@@ -60,6 +60,9 @@ struct FeedView: View {
         NavigationStack(path: $router.feedPath) {
             ScrollView {
                 if !meals.isEmpty {
+                    if streak >= 2 {
+                        streakBadge
+                    }
                     seasonPicker
                     if let memoryItem, let meal = meals.first(where: { $0.id == memoryItem.id }) {
                         OnThisDayCard(meal: meal, summary: memoryItem)
@@ -85,20 +88,11 @@ struct FeedView: View {
             .overlay { emptyState(filtered: filtered) }
             .navigationTitle("Sunday")
             .toolbar {
-                if streak >= 2 {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Label("\(streak) Sundays in a row", systemImage: "flame.fill")
-                            .labelStyle(.titleAndIcon)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Color.sundayAccent)
-                            .accessibilityLabel("\(streak) Sundays in a row")
-                    }
-                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isAdding = true
                     } label: {
-                        Label("Add dinner", systemImage: "plus.circle.fill")
+                        Label("Add dinner", systemImage: "plus")
                     }
                     .accessibilityIdentifier("addDinner")
                 }
@@ -142,8 +136,21 @@ struct FeedView: View {
         }
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(.bar)
         .accessibilityAddTraits(.isHeader)
+    }
+
+    private var streakBadge: some View {
+        Label("\(streak) Sundays in a row", systemImage: "flame.fill")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.sundayAccent)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.sundayAccent.opacity(0.12), in: Capsule())
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.top, 4)
+            .accessibilityLabel("\(streak) Sundays in a row")
     }
 
     private var seasonPicker: some View {
