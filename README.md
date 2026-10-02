@@ -2,14 +2,18 @@
 
 A private iPhone app for the family's Sunday dinners. Snap a picture, name the dish, and give it your private stars. Over the years it becomes the family's own record: what we ate, when, in which season, and what we loved.
 
-## Features (v1)
+## Features
 
-- **Fast capture.** Opens straight to the camera. Add photos, a name, who cooked, and notes.
-- **Private star ratings.** Your stars stay in your own iCloud and nobody else in the family sees them.
-- **Family feed.** One shared timeline through iCloud sharing, with no accounts or servers.
-- **History.** Search every dinner, filter by season, and see every time you've had a dish.
-- **What's for dinner?** Suggests favorites you haven't had in a while, dinners from this time in past years, picks for the current season, and has a "Surprise me" button.
-- **Sunday reminder.** A weekly nudge to take the picture, with a "a year ago this week" memory.
+- **Fast capture.** On Sundays it opens straight to the camera. Other days it defaults to last Sunday, or to the date the photo was taken. Photo, then name, then Return saves.
+- **Private star ratings.** Your stars stay in your own iCloud and nobody else sees them, not even the cook.
+- **Family feed.** One shared timeline through iCloud sharing, grouped by year, with search across names, cooks, notes and food tags, plus season filters.
+- **No duplicate dinners.** If someone already posted tonight's dinner, you're offered "Add my photos to it".
+- **History.** "Every time we've had this" timeline, with your average for each dish.
+- **What's for dinner?** Favorites you haven't had in a while, this time in past years, good for the season, upcoming holidays ("🦃 Thanksgiving is coming. Here's what we made before"), and Surprise me.
+- **Memories.** An "A year ago this week" card, a Sunday streak, holiday badges, and milestone celebrations.
+- **Food tags.** Apple's on-device Vision tags the first photo ("pasta", "soup"). Nothing leaves the phone.
+- **Notifications.** A Sunday reminder (with a memory), plus "📸 New dinner posted" when someone in the family posts.
+- **Widget.** Small and medium widgets with last Sunday's dinner, "a year ago this week", and the streak.
 
 ## How the data works
 
@@ -45,7 +49,21 @@ Run the logic tests on their own:
 swift test --package-path Packages/SundayKit
 ```
 
+## Before shipping to TestFlight
+
+- [ ] Set your team, bundle ID, iCloud container (`iCloud.com.kirkouimet.sunday`) and App Group (`group.com.kirkouimet.sunday`) in `project.yml`
+- [ ] Run once with `SUNDAY_INIT_CLOUDKIT_SCHEMA=1`, then **deploy the schema to production** in the CloudKit Console. Do this again whenever the model changes (e.g. `Meal.tags`).
+- [ ] Test sharing with two Apple IDs on two devices: invite, accept (with the app closed and with it open), both posting the same night, deleting, and ratings staying private
+- [ ] Test upgrading from an older build (lightweight migration of the code-built Core Data model)
+- [ ] Real app icon and screenshots
+
+## Screenshots
+
+CI can boot an iPhone simulator, walk every screen with sample data in light, dark and accessibility-large text, and publish PNGs to the `ci-screenshots` branch. It's slow (about 8 macOS minutes), so it only runs for commits whose message contains `[shots]`, or when started manually from the Actions tab.
+
 ## Roadmap
 
-- v2: "On this day" memories in the feed, holiday tags, and widgets.
-- v3: Recipes and chef credits, a year-in-review recap, and a printed photo book.
+- Recipes and chef credits
+- A year-in-review recap (on-device Foundation Models)
+- An optional family score that people opt into sharing
+- A printed photo book
