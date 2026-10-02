@@ -29,24 +29,26 @@ final class ScreenshotTests: XCTestCase {
         }
         snap("1-feed", variant)
 
-        app.swipeUp()
-        snap("2-feed-scrolled", variant)
-
-        // Detail
-        let firstCard = app.buttons["heroCard"].firstMatch
-        if firstCard.isHittable {
-            firstCard.tap()
-        } else {
-            app.swipeDown()
-            app.swipeDown()
-            firstCard.tap()
+        // Detail first, while the hero card is on screen and nothing is
+        // scrolling (a tap during scroll momentum just stops the scroll).
+        card.tap()
+        if !app.navigationBars.buttons.element(boundBy: 0).waitForExistence(timeout: 4) {
+            card.tap()
         }
         sleep(1)
         snap("3-detail", variant)
         app.swipeUp()
+        sleep(1)
         snap("4-detail-history", variant)
         let back = app.navigationBars.buttons.element(boundBy: 0)
         if back.exists { back.tap() }
+        sleep(1)
+
+        app.swipeUp()
+        sleep(1)
+        snap("2-feed-scrolled", variant)
+        app.swipeDown()
+        app.swipeDown()
         sleep(1)
 
         // New dinner
