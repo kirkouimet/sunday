@@ -166,3 +166,34 @@ final class SundayCalendarTests: XCTestCase {
         XCTAssertNil(SundayCalendar.milestoneMessage(forDinnerCount: 7))
     }
 }
+
+final class WidgetStorageTests: XCTestCase {
+    func testRoundTripAndCleanup() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let id = UUID()
+        let item = WidgetSnapshot.Item(title: "Chili", caption: "Last Sunday", date: Date(timeIntervalSince1970: 1_800_000_000),
+                                       imageFileName: "a.jpg", mealID: id)
+        let snapshot = WidgetSnapshot(latest: item, memory: nil, streak: 3, totalDinners: 12,
+                                      generatedAt: Date(timeIntervalSince1970: 1_800_000_100))
+        try WidgetStorage.write(snapshot, images: ["a.jpg": Data([1, 2, 3])], to: directory)
+        XCTAssertEqual(WidgetStorage.read(from: directory), snapshot)
+        XCTAssertEqual(WidgetStorage.imageData(named: "a.jpg", in: directory), Data([1, 2, 3]))
+
+        try WidgetStorage.write(.empty, images: ["b.jpg": Data([4])], to: directory)
+        XCTAssertNil(WidgetStorage.imageData(named: "a.jpg", in: directory), "old thumbnails are removed")
+        XCTAssertEqual(WidgetStorage.read(from: directory).totalDinners, 0)
+    }
+
+    func testReadMissingReturnsEmpty() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        XCTAssertEqual(WidgetStorage.read(from: directory), .empty)
+    }
+
+    func testDeepLink() {
+        let id = UUID()
+        XCTAssertEqual(DeepLink.mealID(from: DeepLink.url(forMeal: id)), id)
+        XCTAssertNil(DeepLink.mealID(from: URL(string: "https://example.com/meal/\(id)")!))
+    }
+}

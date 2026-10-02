@@ -15,6 +15,7 @@ struct FeedView: View {
     @State private var seasonFilter: Season?
     @State private var isAdding = false
     @State private var editingMeal: Meal?
+    @EnvironmentObject private var router: AppRouter
 
     private var starsByMeal: [UUID: Int] { MealStore.starsByMeal(ratings) }
 
@@ -49,7 +50,7 @@ struct FeedView: View {
     private let columns = [GridItem(.adaptive(minimum: 320), spacing: 20, alignment: .top)]
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $router.feedPath) {
             ScrollView {
                 if !meals.isEmpty {
                     seasonPicker
@@ -342,4 +343,5 @@ struct OnThisDayCard: View {
     FeedView()
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
         .environmentObject(MealStore(persistence: .preview))
+        .environmentObject(AppRouter())
 }

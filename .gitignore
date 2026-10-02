@@ -9,3 +9,5 @@ DerivedData/
 .build/
 .swiftpm/
 *.xcresult
+SundayWidget/Info.plist
+SundayWidget/SundayWidget.entitlements

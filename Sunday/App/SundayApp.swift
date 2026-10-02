@@ -1,3 +1,5 @@
+import CoreData
+import SundayKit
 import SwiftUI
 
 @main
@@ -5,18 +7,25 @@ struct SundayApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = MealStore.shared
+    @StateObject private var router = AppRouter()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(\.managedObjectContext, store.context)
                 .environmentObject(store)
+                .environmentObject(router)
+                .onOpenURL { url in
+                    guard let id = DeepLink.mealID(from: url), let meal = store.meal(withID: id) else { return }
+                    router.show(meal)
+                }
                 .tint(.sundayAccent)
                 .preferredColorScheme(UITestOptions.colorScheme)
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             store.reconcile()
+            WidgetPublisher.publish(store: store)
             Task {
                 await store.refreshAccountStatus()
                 await Reminders.rescheduleIfEnabled(store: store)
@@ -25,17 +34,36 @@ struct SundayApp: App {
     }
 }
 
+/// Which tab is showing and the feed's navigation stack, so deep links
+/// (from the widget) can open a dinner.
+@MainActor
+final class AppRouter: ObservableObject {
+    enum Tab: Hashable { case dinners, ideas, family }
+
+    @Published var tab: Tab = .dinners
+    @Published var feedPath: [NSManagedObjectID] = []
+
+    func show(_ meal: Meal) {
+        tab = .dinners
+        feedPath = [meal.objectID]
+    }
+}
+
 struct RootView: View {
     @EnvironmentObject private var store: MealStore
+    @EnvironmentObject private var router: AppRouter
 
     var body: some View {
-        TabView {
+        TabView(selection: $router.tab) {
             FeedView()
                 .tabItem { Label("Dinners", systemImage: "fork.knife") }
+                .tag(AppRouter.Tab.dinners)
             SuggestView()
                 .tabItem { Label("Ideas", systemImage: "sparkles") }
+                .tag(AppRouter.Tab.ideas)
             FamilyView()
                 .tabItem { Label("Family", systemImage: "person.3") }
+                .tag(AppRouter.Tab.family)
         }
         .sheet(item: Binding(
             get: { store.milestone.map(Milestone.init) },

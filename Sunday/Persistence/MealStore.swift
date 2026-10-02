@@ -135,6 +135,7 @@ final class MealStore: ObservableObject {
         }
 
         if isNew { checkMilestone() }
+        WidgetPublisher.publish(store: self)
 
         // Placing the meal in the family zone is a network round trip; don't
         // make the cook wait on it. reconcileSharing() retries anything missed.
@@ -151,6 +152,7 @@ final class MealStore: ObservableObject {
         }
         context.delete(meal)
         saveQuietly()
+        WidgetPublisher.publish(store: self)
     }
 
     func canEdit(_ meal: Meal) -> Bool {
@@ -403,6 +405,7 @@ final class MealStore: ObservableObject {
                     UserDefaults.standard.set(true, forKey: Self.firstImportKey)
                 }
                 self.reconcile()
+                WidgetPublisher.publish(store: self)
             }
         })
 

@@ -21,9 +21,12 @@ targets:
       - path: Sunday
     dependencies:
       - package: SundayKit
+      - target: SundayWidget
     entitlements:
       path: Sunday/Sunday.entitlements
       properties:
+        com.apple.security.application-groups:
+          - group.com.kirkouimet.sunday
         com.apple.developer.icloud-container-identifiers:
           - iCloud.com.kirkouimet.sunday
         com.apple.developer.icloud-services:
@@ -34,6 +37,10 @@ targets:
       properties:
         CFBundleDisplayName: Sunday
         CKSharingSupported: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.kirkouimet.sunday
+            CFBundleURLSchemes:
+              - sunday
         ITSAppUsesNonExemptEncryption: false
         NSCameraUsageDescription: Sunday uses the camera to take pictures of family dinners.
         UIApplicationSceneManifest:
@@ -56,6 +63,29 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: true
+  SundayWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SundayWidget
+    dependencies:
+      - package: SundayKit
+    entitlements:
+      path: SundayWidget/SundayWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.kirkouimet.sunday
+    info:
+      path: SundayWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Sunday
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kirkouimet.sunday.widget
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1,2"
   SundayUITests:
     type: bundle.ui-testing
     platform: iOS
