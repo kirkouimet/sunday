@@ -147,7 +147,8 @@ struct CompactStars: View {
         HStack(spacing: 3) {
             Image(systemName: "star.fill")
                 .foregroundStyle(Color.star)
-            Text(stars.formatted(.number.precision(.fractionLength(stars == stars.rounded() ? 0 : 1))))
+            let rounded = (stars * 10).rounded() / 10
+            Text(rounded.formatted(.number.precision(.fractionLength(rounded == rounded.rounded() ? 0 : 1))))
                 .monospacedDigit()
         }
         .font(.subheadline.weight(.semibold))

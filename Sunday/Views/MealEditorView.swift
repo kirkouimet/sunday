@@ -241,6 +241,7 @@ struct MealEditorView: View {
             dishHistoryLine
 
             DatePicker("When", selection: $draft.date, in: ...Date.now.addingTimeInterval(86_400), displayedComponents: [.date])
+                .disabled(joinedMeal != nil)
 
             TextField("Cooked by", text: $draft.cook)
                 .focused($focusedField, equals: .cook)
@@ -381,7 +382,7 @@ struct MealEditorView: View {
         guard !items.isEmpty else { return }
         for item in items {
             guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { continue }
-            if !isEditing, !didPickDateFromPhoto, let taken = Self.captureDate(of: data) {
+            if targetMeal == nil, !didPickDateFromPhoto, let taken = Self.captureDate(of: data) {
                 draft.date = taken
                 didPickDateFromPhoto = true
             }
@@ -397,7 +398,21 @@ struct MealEditorView: View {
         focusedField = nil
         Task {
             do {
-                try await store.save(draft, editing: targetMeal)
+                do {
+                    try await store.save(draft, editing: targetMeal)
+                } catch SaveError.deletedElsewhere where joinedMeal != nil {
+                    // The dinner we joined was deleted meanwhile: keep the
+                    // photos and save them as a dinner of their own.
+                    var fresh = MealDraft()
+                    fresh.name = draft.name
+                    fresh.date = draft.date
+                    fresh.cook = draft.cook
+                    fresh.notes = draft.notes
+                    fresh.stars = draft.stars
+                    fresh.photos = draft.photos.filter { $0.existing == nil }
+                    joinedMeal = nil
+                    try await store.save(fresh, editing: nil)
+                }
                 if !draft.cook.isEmpty { lastCook = draft.cook }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 dismiss()

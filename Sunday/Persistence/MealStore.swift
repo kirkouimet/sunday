@@ -20,6 +20,14 @@ struct MealDraft {
     var stars = 0
     var photos: [DraftPhoto] = []
 
+    /// What the fields held when loaded from a saved dinner. Saving writes a
+    /// field only if you changed it, so someone else's edit made while your
+    /// editor was open isn't reverted by your stale copy.
+    private(set) var original: (name: String, date: Date, cook: String, notes: String)?
+    /// Photos the dinner had when loaded. Only these can be deleted by a save;
+    /// photos that synced in from someone else afterwards are left alone.
+    private(set) var loadedPhotoIDs: Set<NSManagedObjectID> = []
+
     init() {}
 
     init(meal: Meal, stars: Int) {
@@ -35,6 +43,8 @@ struct MealDraft {
                 ?? UIImage(systemName: "photo") ?? UIImage()
             return DraftPhoto(image: image, existing: photo)
         }
+        original = (name, date, cook, notes)
+        loadedPhotoIDs = Set(meal.sortedPhotos.map(\.objectID))
     }
 
     /// Cheap equality for "are there unsaved changes?".
@@ -114,14 +124,10 @@ final class MealStore: ObservableObject {
             prepared[draftPhoto.id] = await ImageProcessing.prepareAsync(draftPhoto.image)
         }
 
-        // Tag the dinner from its first new photo (on-device Vision), unless
-        // it already has tags.
-        var foodTags: [String]?
-        if (existing?.tags ?? "").isEmpty,
-           let first = draft.photos.first(where: { $0.existing == nil }),
-           let full = prepared[first.id]?.full {
-            foodTags = await FoodTagger.tags(forJPEG: full)
-        }
+        // Photo to tag after saving (on-device Vision), if the dinner has no tags yet.
+        let photoToTag: Data? = (existing?.tags ?? "").isEmpty
+            ? draft.photos.first(where: { $0.existing == nil }).flatMap { prepared[$0.id]?.full }
+            : nil
 
         if let existing, existing.isGone { throw SaveError.deletedElsewhere }
 
@@ -134,15 +140,20 @@ final class MealStore: ObservableObject {
             meal.createdAt = .now
             if let store { context.assign(meal, to: store) }
         }
-        meal.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        meal.date = draft.date
-        meal.cook = draft.cook.trimmingCharacters(in: .whitespacesAndNewlines)
-        meal.notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let foodTags, !foodTags.isEmpty { meal.tags = FoodTags.encode(foodTags) }
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cook = draft.cook.trimmingCharacters(in: .whitespacesAndNewlines)
+        let notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let original = isNew ? nil : draft.original
+        if original == nil || draft.name != original?.name { meal.name = name }
+        if original == nil || draft.date != original?.date { meal.date = draft.date }
+        if original == nil || draft.cook != original?.cook { meal.cook = cook }
+        if original == nil || draft.notes != original?.notes { meal.notes = notes }
 
-        // Photos: drop removed ones, re-order kept ones, add new ones.
+        // Photos: drop the ones you removed, re-order kept ones, add new ones.
+        // Photos someone else added after you opened the editor stay.
         let keptIDs = Set(draft.photos.compactMap { $0.existing?.objectID })
-        for photo in meal.sortedPhotos where !keptIDs.contains(photo.objectID) {
+        for photo in meal.sortedPhotos
+        where draft.loadedPhotoIDs.contains(photo.objectID) && !keptIDs.contains(photo.objectID) {
             context.delete(photo)
         }
         for (index, draftPhoto) in draft.photos.enumerated() {
@@ -174,6 +185,7 @@ final class MealStore: ObservableObject {
             FamilyNotifier.markKnown(meal.id)
             checkMilestone()
         }
+        if let photoToTag { tagInBackground(meal.objectID, photo: photoToTag) }
         WidgetPublisher.publish(store: self)
 
         // Placing the meal in the family zone is a network round trip; don't
@@ -183,6 +195,18 @@ final class MealStore: ObservableObject {
             Task { await addToFamilyShare(objectID) }
         }
         return meal
+    }
+
+    /// Vision takes up to a second; don't make the cook wait for it.
+    private func tagInBackground(_ objectID: NSManagedObjectID, photo: Data) {
+        Task {
+            let tags = await FoodTagger.tags(forJPEG: photo)
+            guard !tags.isEmpty, let meal = try? context.existingObject(with: objectID) as? Meal,
+                  !meal.isGone, (meal.tags ?? "").isEmpty
+            else { return }
+            meal.tags = FoodTags.encode(tags)
+            saveQuietly()
+        }
     }
 
     func delete(_ meal: Meal) {
@@ -354,6 +378,7 @@ final class MealStore: ObservableObject {
         let saved = try await persistence.container.persistUpdatedShare(newShare, in: privateStore)
         share = saved
         role = .owner
+        if FamilyNotifier.isEnabled { _ = await Reminders.requestAuthorization() }
         return saved
     }
 
@@ -362,6 +387,7 @@ final class MealStore: ObservableObject {
         do {
             _ = try await persistence.container.acceptShareInvitations(from: [metadata], into: sharedStore)
             refreshShare()
+            if FamilyNotifier.isEnabled { _ = await Reminders.requestAuthorization() }
         } catch {
             logger.error("Accepting share failed: \(error.localizedDescription)")
         }

@@ -50,7 +50,7 @@ public enum SundayCalendar {
         case 7..<14: return "Last week"
         case 14..<45: return "\(days / 7) weeks ago"
         case 45..<320: return "\(max(2, Int((Double(days) / 30.4).rounded()))) months ago"
-        case 320..<500: return "About a year ago"
+        case 320..<548: return "About a year ago"
         default: return "\(Int((Double(days) / 365.25).rounded())) years ago"
         }
     }

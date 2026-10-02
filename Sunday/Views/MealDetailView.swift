@@ -37,7 +37,7 @@ struct MealDetailView: View {
         // photo runs up under it.
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .clearNavigationBarOnGlass()
         .toolbar { if !meal.isGone { toolbarContent } }
         .sheet(isPresented: $isEditing) {
             MealEditorView(meal: meal)
@@ -205,6 +205,8 @@ struct MealDetailView: View {
     private func timelineRow(_ summary: MealSummary, isLast: Bool) -> some View {
         let isThis = summary.id == meal.id
         let row = HStack(alignment: .top, spacing: 12) {
+            // The column stretches to the row's height (fixedSize below), so
+            // the line reaches down to the next dinner's dot.
             VStack(spacing: 0) {
                 Circle()
                     .fill(isThis ? Color.sundayAccent : Color.secondary.opacity(0.5))
@@ -218,6 +220,7 @@ struct MealDetailView: View {
                 }
             }
             .frame(width: 10)
+            .frame(maxHeight: .infinity, alignment: .top)
 
             let layout = typeSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
@@ -241,6 +244,7 @@ struct MealDetailView: View {
             }
             .padding(.bottom, isLast ? 0 : 14)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .font(.subheadline)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
@@ -292,5 +296,18 @@ struct SharedPhoto: Transferable {
 
     static var transferRepresentation: some TransferRepresentation {
         DataRepresentation(exportedContentType: .jpeg) { $0.data }
+    }
+}
+
+extension View {
+    /// On iOS 26 the glass toolbar floats over the photo. Earlier versions
+    /// keep the standard bar so text never scrolls under bare buttons.
+    @ViewBuilder
+    func clearNavigationBarOnGlass() -> some View {
+        if #available(iOS 26.0, *) {
+            self.toolbarBackground(.hidden, for: .navigationBar)
+        } else {
+            self
+        }
     }
 }

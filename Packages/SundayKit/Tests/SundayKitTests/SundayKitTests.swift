@@ -376,3 +376,13 @@ final class FoodTagsTests: XCTestCase {
         XCTAssertEqual(FoodTags.displayName("ice_cream"), "Ice cream")
     }
 }
+
+final class TimeAgoBoundaryTests: XCTestCase {
+    func testNoOneYearsAgo() {
+        for days in 320..<900 {
+            XCTAssertFalse(SundayCalendar.timeAgo(days: days).hasPrefix("1 "), "\(days) days")
+        }
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 520), "About a year ago")
+        XCTAssertEqual(SundayCalendar.timeAgo(days: 548), "2 years ago")
+    }
+}

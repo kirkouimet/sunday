@@ -35,10 +35,20 @@ enum FamilyNotifier {
         let meals = (try? store.context.fetch(request)) ?? []
         let ids = Set(meals.compactMap { $0.id?.uuidString })
 
-        // First sync on a device: everything is "new", but none of it is news.
-        guard UserDefaults.standard.bool(forKey: seededKey) else {
+        // Until this device's first full sync (both stores) is done, every
+        // dinner looks new but none of it is news: just remember them all.
+        // Also nothing to announce when there's no family.
+        guard UserDefaults.standard.bool(forKey: seededKey) || store.hasCompletedFirstImport else {
+            known = ids
+            return
+        }
+        if !UserDefaults.standard.bool(forKey: seededKey) {
             known = ids
             UserDefaults.standard.set(true, forKey: seededKey)
+            return
+        }
+        guard store.role != .solo else {
+            known = ids
             return
         }
 

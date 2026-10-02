@@ -6,6 +6,7 @@ import Foundation
 public enum FoodTags {
     /// Vision classifier identifiers that are foods or dish types.
     public static let allowlist: Set<String> = [
+        "beans", "berries", "dumplings", "french_fries", "grapes", "hot_dog", "noodles", "pancakes", "waffles",
         "apple", "avocado", "bagel", "banana", "barbecue", "bean", "berry", "bread", "breakfast", "broccoli",
         "brownie", "burger", "burrito", "cake", "candy", "carrot", "casserole", "cheese", "cheesecake",
         "cherry", "chicken", "chili", "chocolate", "cookie", "corn", "croissant", "cupcake", "curry", "dessert",
