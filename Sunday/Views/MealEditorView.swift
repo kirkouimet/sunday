@@ -121,7 +121,7 @@ struct MealEditorView: View {
                 .ignoresSafeArea()
             }
             .onChange(of: isShowingCamera) { _, showing in
-                if !showing, draft.name.isEmpty { focusedField = .name }
+                if !showing, draft.name.isEmpty, sameDayMeal == nil { focusedField = .name }
             }
             .onChange(of: pickerItems) { _, items in
                 Task { await loadPicked(items) }
@@ -388,7 +388,7 @@ struct MealEditorView: View {
             draft.photos.append(.init(image: image))
         }
         pickerItems = []
-        if draft.name.isEmpty { focusedField = .name }
+        if draft.name.isEmpty, sameDayMeal == nil { focusedField = .name }
     }
 
     private func save() {
