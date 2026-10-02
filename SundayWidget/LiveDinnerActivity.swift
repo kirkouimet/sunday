@@ -74,10 +74,11 @@ private struct LiveDinnerLockScreen: View {
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(liveAccent)
                 Spacer()
-                Text(context.attributes.startedAt, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .multilineTextAlignment(.trailing)
+                if context.isStale {
+                    Text("Wrapped up · tap to rate")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.7))
+                }
             }
             Text(context.state.dish)
                 .font(.system(.title3, design: .serif).weight(.bold))
@@ -151,16 +152,11 @@ private struct Faces: View {
     let size: CGFloat
     let limit: Int
 
-    private static let palette: [Color] = [
-        Color(red: 0.25, green: 0.55, blue: 0.55), Color(red: 0.62, green: 0.40, blue: 0.62),
-        Color(red: 0.33, green: 0.55, blue: 0.40), Color(red: 0.40, green: 0.45, blue: 0.70),
-        Color(red: 0.75, green: 0.42, blue: 0.55), Color(red: 0.80, green: 0.50, blue: 0.25),
-    ]
 
     var body: some View {
         HStack(spacing: -size * 0.25) {
             ForEach(Array(people.prefix(limit).enumerated()), id: \.offset) { _, person in
-                Text(String(person.prefix(1)).uppercased())
+                Text(AvatarPalette.initial(for: person))
                     .font(.system(size: size * 0.45, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .frame(width: size, height: size)
@@ -179,7 +175,7 @@ private struct Faces: View {
     }
 
     private static func color(for name: String) -> Color {
-        let sum = name.lowercased().unicodeScalars.reduce(0) { $0 + Int($1.value) }
-        return palette[sum % palette.count]
+        let c = AvatarPalette.colors[AvatarPalette.index(for: name)]
+        return Color(red: c.red, green: c.green, blue: c.blue)
     }
 }

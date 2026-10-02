@@ -41,7 +41,8 @@ enum LiveDinners {
         let liveID = live?.id?.uuidString
 
         for activity in Activity<LiveDinnerAttributes>.activities where activity.attributes.mealID != liveID {
-            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+            // Leave the final faces up for a bit, then go.
+            Task { await activity.end(activity.content, dismissalPolicy: .after(.now.addingTimeInterval(15 * 60))) }
         }
         guard let live, let liveID, let startedAt = live.liveAt else {
             removeLiveThumbnails()
@@ -56,7 +57,9 @@ enum LiveDinners {
             me: store.myName,
             photoFile: writeThumbnail(of: live, id: liveID)
         )
-        let content = ActivityContent(state: state, staleDate: startedAt.addingTimeInterval(LiveDinner.window))
+        // Other phones only hear "That's dinner" when iCloud wakes them; past
+        // the evening's end the Lock Screen says so itself.
+        let content = ActivityContent(state: state, staleDate: LiveDinner.endsAt(startedAt))
 
         if let existing = Activity<LiveDinnerAttributes>.activities.first(where: { $0.attributes.mealID == liveID }) {
             guard existing.content.state != state else { return }

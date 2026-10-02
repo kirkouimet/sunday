@@ -78,10 +78,22 @@ public enum PendingCheckIns {
         read(from: directory).contains { $0.mealID == mealID }
     }
 
-    public static func drain(from directory: URL? = WidgetStorage.directory, apply: (Entry) -> Void) {
+    /// Hands each queued check-in to `apply`, which returns false if it
+    /// can't place it yet (the dinner hasn't synced to this phone). Those
+    /// stay queued, until they're older than a dinner could last.
+    public static func drain(from directory: URL? = WidgetStorage.directory, now: Date = .now,
+                             apply: (Entry) -> Bool) {
         let entries = read(from: directory)
         guard !entries.isEmpty, let directory else { return }
-        entries.forEach(apply)
-        try? FileManager.default.removeItem(at: directory.appendingPathComponent(fileName))
+        let kept = entries.filter { entry in
+            guard now.timeIntervalSince(entry.at) < LiveDinner.window else { return false }
+            return !apply(entry)
+        }
+        let url = directory.appendingPathComponent(fileName)
+        if kept.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+        } else {
+            try? JSONEncoder().encode(kept).write(to: url, options: .atomic)
+        }
     }
 }

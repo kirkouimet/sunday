@@ -44,7 +44,7 @@ struct MealDraft {
                 ?? UIImage(systemName: "photo") ?? UIImage()
             return DraftPhoto(image: image, existing: photo)
         }
-        attendees = Attendance.decode(meal.attendees)
+        attendees = meal.tablePeople
         original = (name, date, cook, notes, attendees)
         loadedPhotoIDs = Set(meal.sortedPhotos.map(\.objectID))
     }
@@ -150,7 +150,14 @@ final class MealStore: ObservableObject {
         if original == nil || draft.date != original?.date { meal.date = draft.date }
         if original == nil || draft.cook != original?.cook { meal.cook = cook }
         if original == nil || draft.notes != original?.notes { meal.notes = notes }
-        if original == nil || draft.attendees != original?.attendees { meal.attendees = Attendance.encode(draft.attendees) }
+        if original == nil || draft.attendees != original?.attendees {
+            meal.attendees = Attendance.encode(draft.attendees)
+            // Unticking someone who checked in live takes their check-in too.
+            for checkIn in meal.checkIns as? Set<CheckIn> ?? []
+            where !draft.attendees.contains(where: { $0.caseInsensitiveCompare(checkIn.name ?? "") == .orderedSame }) {
+                context.delete(checkIn)
+            }
+        }
 
         // Photos: drop the ones you removed, re-order kept ones, add new ones.
         // Photos someone else added after you opened the editor stay.
@@ -221,7 +228,9 @@ final class MealStore: ObservableObject {
         let trimmed = recipe.trimmingCharacters(in: .whitespacesAndNewlines)
         meal.recipe = trimmed.isEmpty ? nil : trimmed
         // Only while the text is still what the structure says.
-        meal.recipeStructure = structure.flatMap { $0.formatted == trimmed ? $0.encoded : nil }
+        // The sorted card, or (after a typo fix) the text read back into one.
+        let kept = structure.flatMap { $0.formatted == trimmed ? $0 : nil } ?? StructuredRecipe.parse(trimmed)
+        meal.recipeStructure = kept?.encoded
         meal.recipeAudio = audio
         meal.recipeBy = teller
         saveQuietly()
@@ -316,14 +325,14 @@ final class MealStore: ObservableObject {
 
     /// "I'm here": its own record in the dinner's zone, so four phones
     /// tapping at once all count.
-    func checkIn(_ meal: Meal, as name: String? = nil) {
-        guard !meal.isGone, let name = name ?? myName,
+    func checkIn(_ meal: Meal, as name: String? = nil, at time: Date = .now) {
+        guard !meal.isGone, meal.isLive, let name = name ?? myName,
               !meal.tablePeople.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame })
         else { return }
         let record = CheckIn(context: context)
         record.id = UUID()
         record.name = name
-        record.at = .now
+        record.at = time
         if let store = meal.objectID.persistentStore { context.assign(record, to: store) }
         record.meal = meal
         saveQuietly()
@@ -350,8 +359,73 @@ final class MealStore: ObservableObject {
     /// rating takes it from here.
     func endLive(_ meal: Meal) {
         guard !meal.isGone else { return }
+        settle(meal, endedAt: .now)
+        saveQuietly()
+        LiveDinners.sync(store: self)
+    }
+
+    /// Check-ins become who was at the table; an evening people checked in
+    /// to happened, photo or not (never "Did you have it?" the next day).
+    private func settle(_ meal: Meal, endedAt: Date) {
         meal.attendees = Attendance.encode(meal.tablePeople)
-        meal.liveEndedAt = .now
+        meal.liveEndedAt = endedAt
+        if meal.isPlan, !meal.tablePeople.isEmpty { meal.isPlan = false }
+    }
+
+    /// Live dinners nobody wrapped up, whose evening has passed.
+    func settleFinishedLive() {
+        let request = NSFetchRequest<Meal>(entityName: "Meal")
+        request.predicate = NSPredicate(format: "liveAt != nil AND liveEndedAt == nil")
+        let finished = ((try? context.fetch(request)) ?? []).filter { !$0.isLive }
+        guard !finished.isEmpty else { return }
+        for meal in finished {
+            settle(meal, endedAt: meal.liveAt.map { LiveDinner.endsAt($0) } ?? .now)
+        }
+        saveQuietly()
+        LiveDinners.sync(store: self)
+    }
+
+    /// "Not here": a face on the Live card that shouldn't be.
+    func removeFromTable(_ name: String, meal: Meal) {
+        guard !meal.isGone else { return }
+        for checkIn in meal.checkIns as? Set<CheckIn> ?? []
+        where (checkIn.name ?? "").caseInsensitiveCompare(name) == .orderedSame {
+            context.delete(checkIn)
+        }
+        meal.attendees = Attendance.encode(Attendance.decode(meal.attendees).filter { $0.caseInsensitiveCompare(name) != .orderedSame })
+        saveQuietly()
+        LiveDinners.sync(store: self)
+    }
+
+    /// Snap at the table: the photo goes straight onto the live dinner.
+    /// No form, no stars; rating comes after.
+    @discardableResult
+    func addLivePhoto(_ image: UIImage, to meal: Meal) async -> Photo? {
+        let images = await ImageProcessing.prepareAsync(image)
+        guard !meal.isGone, let images else { return nil }
+        let photo = Photo(context: context)
+        photo.id = UUID()
+        photo.createdAt = .now
+        photo.sortIndex = Int16(meal.sortedPhotos.count)
+        photo.by = myName
+        photo.imageData = images.full
+        photo.thumbnailData = images.thumbnail
+        if let store = meal.objectID.persistentStore { context.assign(photo, to: store) }
+        photo.meal = meal
+        if meal.isPlan { meal.isPlan = false }
+        saveQuietly()
+        FamilyNotifier.markKnown(meal.id)
+        WidgetPublisher.publish(store: self)
+        if role == .owner {
+            let objectID = meal.objectID
+            Task { await addToFamilyShare(objectID) }
+        }
+        LiveDinners.sync(store: self)
+        return photo
+    }
+
+    func deletePhoto(_ photo: Photo) {
+        context.delete(photo)
         saveQuietly()
         LiveDinners.sync(store: self)
     }
@@ -369,8 +443,10 @@ final class MealStore: ObservableObject {
     func applyPendingCheckIns() {
         guard !PersistenceController.isUITesting, myName != nil else { return }
         PendingCheckIns.drain { entry in
-            guard let meal = meal(withID: entry.mealID) else { return }
-            checkIn(meal)
+            // Not synced here yet: keep it. Over already: drop it.
+            guard let meal = meal(withID: entry.mealID) else { return false }
+            if meal.isLive { checkIn(meal, at: entry.at) }
+            return true
         }
     }
 

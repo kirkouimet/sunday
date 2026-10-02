@@ -522,9 +522,21 @@ final class LiveDinnerTests: XCTestCase {
         try PendingCheckIns.add(.init(mealID: chili), to: directory)
         XCTAssertTrue(PendingCheckIns.contains(chili, in: directory))
         var drained: [UUID] = []
-        PendingCheckIns.drain(from: directory) { drained.append($0.mealID) }
+        PendingCheckIns.drain(from: directory) { drained.append($0.mealID); return true }
         XCTAssertEqual(drained, [chili])
         XCTAssertTrue(PendingCheckIns.read(from: directory).isEmpty)
+    }
+
+    func testPendingCheckInsWaitForSyncButExpire() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fresh = UUID(), old = UUID()
+        try PendingCheckIns.add(.init(mealID: fresh), to: directory)
+        try PendingCheckIns.add(.init(mealID: old, at: .now.addingTimeInterval(-7 * 3600)), to: directory)
+        var seen: [UUID] = []
+        PendingCheckIns.drain(from: directory) { seen.append($0.mealID); return false }
+        XCTAssertEqual(seen, [fresh]) // The week-old tap is never applied.
+        XCTAssertEqual(PendingCheckIns.read(from: directory).map(\.mealID), [fresh])
     }
 }
 
@@ -555,5 +567,41 @@ final class StructuredRecipeTests: XCTestCase {
         XCTAssertEqual(recipe.formatted, "Ingredients\n• 2 lemons\n• 1 chicken\n\nSteps\n1. Roast it.\n2. Squeeze.\n\n“Grandma's way”")
         XCTAssertEqual(StructuredRecipe.decode(recipe.encoded), recipe)
         XCTAssertNil(StructuredRecipe.decode("nope"))
+    }
+}
+
+final class RecipeChunkingTests: XCTestCase {
+    func testChunksAtSentences() {
+        let sentence = "Brown the onions slowly. "
+        let text = String(repeating: sentence, count: 400) // ~10k characters
+        let chunks = StructuredRecipe.chunks(of: text, max: 5_000)
+        XCTAssertGreaterThan(chunks.count, 1)
+        XCTAssertTrue(chunks.allSatisfy { $0.count <= 5_000 })
+        XCTAssertEqual(chunks.joined(), text)
+    }
+
+    func testMergeDeduplicatesIngredients() {
+        let merged = StructuredRecipe.merged([
+            .init(ingredients: ["2 onions", "Salt"], steps: ["Chop."]),
+            .init(ingredients: ["salt", "Beef"], steps: ["Brown."], note: "Low and slow"),
+        ])
+        XCTAssertEqual(merged.ingredients, ["2 onions", "Salt", "Beef"])
+        XCTAssertEqual(merged.steps, ["Chop.", "Brown."])
+        XCTAssertEqual(merged.note, "Low and slow")
+    }
+
+    func testParseRoundTripAfterTypoFix() {
+        let recipe = StructuredRecipe(ingredients: ["2 lemons", "1 chicken"], steps: ["Roast it.", "Squeeze."], note: "Grandma's way")
+        let edited = recipe.formatted.replacingOccurrences(of: "Roast it.", with: "Roast it at 425°F.")
+        let parsed = StructuredRecipe.parse(edited)
+        XCTAssertEqual(parsed?.ingredients, ["2 lemons", "1 chicken"])
+        XCTAssertEqual(parsed?.steps, ["Roast it at 425°F.", "Squeeze."])
+        XCTAssertEqual(parsed?.note, "Grandma's way")
+        XCTAssertNil(StructuredRecipe.parse("Just brown it and add beans."))
+    }
+
+    func testAvatarPaletteIsStable() {
+        XCTAssertEqual(AvatarPalette.index(for: "Ellie"), AvatarPalette.index(for: " ellie "))
+        XCTAssertEqual(AvatarPalette.initial(for: "grandma June"), "G")
     }
 }

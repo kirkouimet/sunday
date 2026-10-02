@@ -139,8 +139,15 @@ enum FamilyNotifier {
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
         let content = UNMutableNotificationContent()
         content.title = "🍽️ Sunday dinner is on"
-        let who = meal.cook.flatMap { $0.isEmpty ? nil : $0 } ?? meal.liveBy
-        content.body = who.map { "\($0)'s cooking \(meal.displayName). At the table?" } ?? "\(meal.displayName). At the table?"
+        // Never invent a cook: whoever tapped "sitting down" just sat down.
+        let dish = (meal.name ?? "").trimmingCharacters(in: .whitespaces).isEmpty ? nil : meal.displayName
+        if let cook = meal.cook, !cook.isEmpty {
+            content.body = "\(cook)'s cooking \(dish ?? "dinner"). At the table?"
+        } else if let starter = meal.liveBy {
+            content.body = "\(starter) sat down to \(dish ?? "dinner"). At the table?"
+        } else {
+            content.body = "\(dish ?? "Dinner")'s on. At the table?"
+        }
         content.sound = .default
         content.categoryIdentifier = store.myName == nil ? LiveNotification.askCategoryID : LiveNotification.categoryID
         content.threadIdentifier = LiveNotification.categoryID
@@ -182,6 +189,12 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
             switch response.actionIdentifier {
             case LiveNotification.checkInAction:
                 try? PendingCheckIns.add(.init(mealID: mealID))
+                // Give iCloud time to send the check-in before iOS suspends us.
+                let task = await MainActor.run { UIApplication.shared.beginBackgroundTask(withName: "check-in") }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(25))
+                    UIApplication.shared.endBackgroundTask(task)
+                }
                 await MainActor.run {
                     CheckInIntent.onCheckIn?()
                     if MealStore.shared.needsMyName { UIApplication.shared.open(DeepLink.live) }

@@ -10,6 +10,7 @@ Canvas with screenshots and pinned critiques: claude.ai/design ("Sunday Design R
 | Loop | Maturity | 🚀 | 🧱 | 🎨 | Biggest idea |
 |---|---|---|---|---|---|
 | 0 (baseline) | – | 3 | 6 | 8 | "Tonight" moment; cooks as people; Ideas as a decision tool |
+| 7 | 8/10 | 0 | 3 | 2 | **Is Live multiplayer now? "Mostly yes, at the data layer"**, but "multiplayer for the person who started dinner; everyone else gets eventually consistent" · 7 bugs at the edges where a 2nd/3rd phone joins · 1 ✂️. Critic: "flat part of the curve, and that's the right place to be… if a loop proposes a new screen, the answer should be no" |
 | 6 | 8/10 | 0 new (Live judged "partly a leap") | 6 | 2 | **Was loop 6 a leap? Partly**: "biggest step since loop 3… the app now has a present tense", but "single-player plumbing underneath" · 6 bugs, all in the new multiplayer core. Critic: "one step-change left: make Live actually multiplayer; then hardening, no new concepts" |
 | 5 | 8/10 | 2 | 3 | 2 | **Sunday Live** (multiplayer, real-time: Live Activity, "I'm here", everyone's photos); talk instead of type (on-device model) · subtraction "worked" · 4 ✂️ · 4 bugs. Critic: "if loop 6 builds that, expect a genuine leap; if it builds screens, marginal gains" |
 | 4 | 8/10 | 2 | 3 | 2 | 5 ✂️ cuts recommended (new) · Sunday Book (printed yearbook); voice → text · 3 bugs incl. data loss. Critic: "marginal value is now negative" |
@@ -114,3 +115,19 @@ Critique (8/10), on the question of the whole experiment: **"Was loop 6 a leap? 
 - 🎨 The Live Activity shows the newest photo, *Snap* is its own button, and a tap opens the live card. "Who was at the table" is hidden in the editor while Live; the "since 6:10" line is gone.
 - 🐛 **Found while building**: every widget refresh deleted everything in the App Group folder that wasn't a current thumbnail, *including the pending-ratings queue* (stars tapped on the Lock Screen could vanish before the app applied them). Now only stale thumbnails are removed (tested).
 - Public layer: the post's Save/Fork counts are gone ("Save", "Make it yours"); the publish button now matches Requests ("Send to Ellie and Sam").
+
+## Loop 7 → 8: the second phone (implemented)
+
+Critique (8/10): "Live is structurally multiplayer. The remaining failures are no longer conceptual. They sit where a second or third phone joins, which is exactly where a real family will find them." Novelty check: **"There is no honest leap left that fits the no-server constraint."** Its plan: loop 8, the edges; loop 9, a four-device rehearsal; loop 10, cuts and finish.
+
+- 🐛 **Snap at the table is just a photo.** *Snap* on the Live card goes camera → straight onto the dinner, signed with your name (`addLivePhoto`), then "Added to Chili · Undo". No form, no "already posted?", no stars at the table.
+- 🐛 **Wrong check-ins come off.** Long-press a face → *Not here*. The editor now edits `tablePeople`, and unticking someone deletes their check-in.
+- 🐛 **Queued check-ins don't haunt next week.** Taps wait while their dinner hasn't synced to this phone yet, expire after the evening, apply only to a live dinner, and keep the time you actually tapped (tested).
+- 🐛 **An unplanned live dinner is history, not a question.** "That's dinner", or the evening ending on its own, settles it: check-ins become who was at the table, and it stops being a plan, so there's no "Did you have Sunday dinner?" with *We didn't* deleting the evening.
+- 🧱 **Other phones' Lock Screens stop lying.** The Live Activity goes stale at the evening's end ("Wrapped up · tap to rate"), ends with its final faces left up for 15 minutes, and a check-in from a notification gets background time so iCloud can send it before iOS suspends the app.
+- 🐛 The notification no longer invents a cook ("Dad sat down to dinner. At the table?").
+- 🧱 **Who's missing** is the multiplayer payoff: dimmed, dashed faces for regulars who haven't checked in ("Sam and Grandma June aren't here yet"), right above *Tell the table*. The status line stops repeating the count; the thumbnail strip appears only from 3 photos.
+- 🐛 One avatar palette in SundayKit, so Ellie is the same colour in the app, the widgets and the Live Activity (tested).
+- 🐛 **Grandma's ten minutes can be sorted**: long tellings are split at sentence ends, sorted a piece at a time and merged (ingredients once, steps in order); a typo fix reads the card back in instead of dropping the structure (tested).
+- 🎨 No workout timer on the Lock Screen.
+- Public layer: every leftover count is gone (Save · 1.2k, Fork · 84, "41 people asked", Follow, a second "Since"). The critic's flag stands: anything beyond *a card to share* needs a server, so it's a separate product decision, not a loop item.

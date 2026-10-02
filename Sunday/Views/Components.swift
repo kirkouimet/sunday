@@ -262,20 +262,13 @@ struct CookAvatar: View {
     let name: String
     var size: CGFloat = 22
 
-    private static let tints: [Color] = [
-        Color(red: 0.84, green: 0.45, blue: 0.27), Color(red: 0.36, green: 0.55, blue: 0.42),
-        Color(red: 0.38, green: 0.47, blue: 0.70), Color(red: 0.66, green: 0.42, blue: 0.62),
-        Color(red: 0.75, green: 0.58, blue: 0.22), Color(red: 0.31, green: 0.58, blue: 0.62),
-    ]
-
+    /// Same colour as on the Lock Screen and widgets (SundayKit).
     private var tint: Color {
-        let sum = name.lowercased().unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
-        return Self.tints[abs(sum) % Self.tints.count]
+        let c = AvatarPalette.colors[AvatarPalette.index(for: name)]
+        return Color(red: c.red, green: c.green, blue: c.blue)
     }
 
-    private var initial: String {
-        name.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } ?? "?"
-    }
+    private var initial: String { AvatarPalette.initial(for: name) }
 
     var body: some View {
         Text(initial)

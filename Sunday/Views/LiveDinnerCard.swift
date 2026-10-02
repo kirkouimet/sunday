@@ -19,6 +19,25 @@ struct LiveDinnerCard: View {
 
     private var people: [String] { meal.tablePeople }
 
+    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Meal.date, ascending: false)])
+    private var allMeals: FetchedResults<Meal>
+
+    /// Family regulars who haven't checked in.
+    private var missing: [String] {
+        let here = Set(people.map { $0.lowercased() })
+        return store.familyNames(from: Array(allMeals.prefix(30))).prefix(6).filter { !here.contains($0.lowercased()) }
+    }
+
+    private var missingLine: String? {
+        let names = Array(missing.prefix(3))
+        switch names.count {
+        case 0: return nil
+        case 1: return "\(names[0]) isn't here yet"
+        case 2: return "\(names[0]) and \(names[1]) aren't here yet"
+        default: return "\(names[0]), \(names[1]) and \(names[2]) aren't here yet"
+        }
+    }
+
     /// Newest first: the table sees what was just taken.
     private var photos: [Photo] {
         meal.sortedPhotos.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
@@ -38,7 +57,8 @@ struct LiveDinnerCard: View {
                         .onSubmit { store.rename(meal, to: dishName) }
                         .padding(.top, 4)
                 }
-                if photos.count > 1 {
+                // A strip earns its row once there are a few.
+                if photos.count > 2 {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(photos.dropFirst()) { photo in
@@ -133,7 +153,8 @@ struct LiveDinnerCard: View {
                         .font(.title2.bold())
                         .keepsake()
                         .lineLimit(2)
-                    let status = LiveDinner.status(cook: meal.cook, people: people.count, photos: photos.count)
+                    // The faces already say how many are here.
+                    let status = LiveDinner.status(cook: meal.cook, people: 0, photos: photos.count)
                     if !status.isEmpty {
                         Text(status).font(.subheadline)
                     }
@@ -145,10 +166,30 @@ struct LiveDinnerCard: View {
                                         .overlay(Circle().strokeBorder(.white, lineWidth: 2))
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel(person)
+                                .accessibilityLabel("\(person), at the table")
+                                .contextMenu {
+                                    Button("Not here", systemImage: "person.badge.minus") {
+                                        store.removeFromTable(person, meal: meal)
+                                    }
+                                }
+                            }
+                            // Who's missing: the reason to "Tell the table".
+                            ForEach(missing.prefix(4), id: \.self) { person in
+                                Text(AvatarPalette.initial(for: person))
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                    .frame(width: 34, height: 34)
+                                    .overlay(Circle().strokeBorder(.white.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .padding(.leading, 12)
+                                    .accessibilityLabel("\(person), not here yet")
                             }
                         }
                         .padding(.top, 2)
+                    }
+                    if let line = missingLine {
+                        Text(line)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.85))
                     }
                 }
                 .foregroundStyle(.white)

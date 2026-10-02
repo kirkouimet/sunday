@@ -1,4 +1,5 @@
 import CoreData
+import PhotosUI
 import SundayKit
 import SwiftUI
 
@@ -17,7 +18,10 @@ struct FeedView: View {
     @State private var isAdding = false
     @State private var editingMeal: Meal?
     /// "Dinner wrapped up · Undo", for a few seconds after That's dinner.
-    @State private var justEnded: Meal?
+    @State private var toast: UndoToast?
+    /// Snap from the Live card: camera straight onto that dinner.
+    @State private var snappingLive: Meal?
+    @State private var livePickerItem: PhotosPickerItem?
 
     private var isFiltering: Bool { seasonFilter != nil || !MealName.normalize(searchText).isEmpty }
 
@@ -116,8 +120,10 @@ struct FeedView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     switch mode {
                     case .live(let meal)?:
-                        LiveDinnerCard(meal: meal, onSnap: { isAdding = true }) { ended in
-                            withAnimation { justEnded = ended }
+                        LiveDinnerCard(meal: meal, onSnap: { snappingLive = meal }) { ended in
+                            withAnimation {
+                                toast = UndoToast(text: "Dinner wrapped up") { store.resumeLive(ended) }
+                            }
                         }
                         .padding(.horizontal)
                     case .goLive(let meal)?:
@@ -167,13 +173,13 @@ struct FeedView: View {
             .background(Color(.systemGroupedBackground))
             .overlay { emptyState(filtered: filtered) }
             .overlay(alignment: .bottom) {
-                if let ended = justEnded {
+                if let toast {
                     HStack {
-                        Text("Dinner wrapped up").font(.subheadline.weight(.medium))
+                        Text(toast.text).font(.subheadline.weight(.medium)).lineLimit(1)
                         Spacer()
                         Button("Undo") {
-                            store.resumeLive(ended)
-                            withAnimation { justEnded = nil }
+                            toast.undo()
+                            withAnimation { self.toast = nil }
                         }
                         .bold()
                     }
@@ -183,9 +189,32 @@ struct FeedView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 80)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .task {
+                    .task(id: toast.id) {
                         try? await Task.sleep(for: .seconds(6))
-                        withAnimation { justEnded = nil }
+                        withAnimation { self.toast = nil }
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: Binding(
+                get: { snappingLive != nil && CameraPicker.isAvailable },
+                set: { if !$0 { snappingLive = nil } }
+            )) {
+                CameraPicker { image in
+                    if let meal = snappingLive { addLivePhoto(image, to: meal) }
+                }
+                .ignoresSafeArea()
+            }
+            .photosPicker(isPresented: Binding(
+                get: { snappingLive != nil && !CameraPicker.isAvailable },
+                set: { if !$0 { snappingLive = nil } }
+            ), selection: $livePickerItem, matching: .images)
+            .onChange(of: livePickerItem) { _, item in
+                guard let item, let meal = snappingLive else { return }
+                livePickerItem = nil
+                snappingLive = nil
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                        addLivePhoto(image, to: meal)
                     }
                 }
             }
@@ -212,6 +241,15 @@ struct FeedView: View {
             }
             .sheet(item: $editingMeal) { meal in
                 MealEditorView(meal: meal)
+            }
+        }
+    }
+
+    private func addLivePhoto(_ image: UIImage, to meal: Meal) {
+        Task {
+            guard let photo = await store.addLivePhoto(image, to: meal) else { return }
+            withAnimation {
+                toast = UndoToast(text: "Added to \(meal.displayName)") { store.deletePhoto(photo) }
             }
         }
     }
@@ -807,4 +845,11 @@ struct GoLiveBanner: View {
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
+}
+
+/// "Dinner wrapped up · Undo", "Added to Chili · Undo".
+struct UndoToast: Identifiable {
+    let id = UUID()
+    let text: String
+    let undo: () -> Void
 }
