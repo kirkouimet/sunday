@@ -77,7 +77,11 @@ final class PersistenceController {
         container.viewContext.automaticallyMergesChangesFromParent = true
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
         container.viewContext.transactionAuthor = "app"
-        try? container.viewContext.setQueryGenerationFrom(.current)
+        // Query generations need a real SQLite file; the in-memory store used
+        // by previews and UI tests throws on every save if this is set.
+        if !inMemory {
+            try? container.viewContext.setQueryGenerationFrom(.current)
+        }
 
         #if DEBUG
         // Pushes the schema to the CloudKit *development* environment once.
