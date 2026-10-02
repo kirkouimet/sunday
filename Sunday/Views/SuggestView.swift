@@ -14,6 +14,7 @@ struct SuggestView: View {
 
     @State private var surprise: Dish?
     @State private var path: [NSManagedObjectID] = []
+    @EnvironmentObject private var router: AppRouter
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -25,7 +26,11 @@ struct SuggestView: View {
         NavigationStack(path: $path) {
             let suggestions = suggestions
             // Longest-missed first: that's the useful order when everything is a favorite.
+            // Stable until "Another" is tapped (a random pick per render would flicker).
+            let pick = surprise ?? suggestions.favoritesDue().first ?? suggestions.dishes.first
+            // Longest-missed first, and not the dish already on the big card.
             let favorites = Array(suggestions.favoritesDue()
+                .filter { $0.key != pick?.key }
                 .sorted { $0.daysSinceLastEaten(now: .now) > $1.daysSinceLastEaten(now: .now) }
                 .prefix(8))
             let seasonal = Array(suggestions.goodForThisSeason().prefix(8))
@@ -35,8 +40,13 @@ struct SuggestView: View {
             List {
                 if !suggestions.dishes.isEmpty {
                     Section {
-                        SurpriseCard(pick: surprise ?? suggestions.surprise(), store: store,
-                                     onOpen: { path.append($0) }) {
+                        SurpriseCard(pick: pick, store: store,
+                                     onPlan: { name in
+                                         Task {
+                                             try? await store.planSunday(name)
+                                             router.tab = .dinners
+                                         }
+                                     }) {
                             withAnimation(reduceMotion ? nil : .spring(duration: 0.45)) {
                                 surprise = suggestions.surprise()
                             }
@@ -163,7 +173,7 @@ private struct SuggestionRow: View {
 private struct SurpriseCard: View {
     let pick: Dish?
     let store: MealStore
-    var onOpen: (NSManagedObjectID) -> Void
+    var onPlan: (String) -> Void
     var onShuffle: () -> Void
 
     @State private var spins = 0
@@ -179,7 +189,7 @@ private struct SurpriseCard: View {
                                             removal: .move(edge: .leading).combined(with: .opacity)))
                 LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .center, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Tonight, how about")
+                    Text(SundayCalendar.isSunday(.now) ? "Tonight, how about" : "This Sunday, how about")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.85))
                     Text(pick?.displayName ?? "")
@@ -199,13 +209,12 @@ private struct SurpriseCard: View {
             .clipped()
 
             HStack(spacing: 10) {
-                if let meal {
-                    // A Button, not a NavigationLink: inside a List a link
-                    // turns into a plain row with a chevron.
+                if let pick {
                     Button {
-                        onOpen(meal.objectID)
+                        onPlan(pick.displayName)
                     } label: {
-                        Text("Let's make it").frame(maxWidth: .infinity)
+                        Text(SundayCalendar.isSunday(.now) ? "Make it tonight" : "Make it Sunday")
+                            .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -213,11 +222,12 @@ private struct SurpriseCard: View {
                     spins += 1
                     onShuffle()
                 } label: {
-                    Label("Another", systemImage: "dice.fill")
+                    Image(systemName: "dice")
                         .symbolEffect(.bounce, value: spins)
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 28)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Another idea")
             }
             .controlSize(.large)
             .padding(14)

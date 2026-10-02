@@ -38,6 +38,7 @@ struct MealDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .clearNavigationBarOnGlass()
+        .toolbar(.hidden, for: .tabBar)
         .toolbar { if !meal.isGone { toolbarContent } }
         .sheet(isPresented: $isEditing) {
             MealEditorView(meal: meal)
@@ -101,6 +102,13 @@ struct MealDetailView: View {
                     Text("Your stars")
                         .font(.headline)
                     StarRatingView(stars: $stars, size: 28)
+                    if stars > 0, let id = meal.id, let dish, let line = PersonalInsight.line(for: id, in: dish) {
+                        Text(line)
+                            .font(.callout)
+                            .italic()
+                            .keepsake()
+                            .transition(.opacity)
+                    }
                     Label("Only you see your stars. Not even the cook.", systemImage: "lock.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -244,7 +252,7 @@ struct MealDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Text(Season.of(summary.date, hemisphere: .current).emoji)
                         .accessibilityHidden(true)
-                    if isThis {
+                    if isThis, !typeSize.isAccessibilitySize {
                         Text("This dinner")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.sundayAccent)
@@ -253,9 +261,11 @@ struct MealDetailView: View {
                 if !typeSize.isAccessibilitySize { Spacer(minLength: 4) }
                 if let stars = summary.stars {
                     YourStarsLabel(stars: Double(stars), size: 11)
+                } else if isThis {
+                    Text("Not rated").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .padding(.bottom, isLast ? 0 : 14)
+            .padding(.bottom, isLast ? 0 : 20)
         }
         .fixedSize(horizontal: false, vertical: true)
         .font(.subheadline)
@@ -276,12 +286,16 @@ struct MealDetailView: View {
                 .font(.title3.weight(.semibold))
                 .keepsake()
                 .accessibilityAddTraits(.isHeader)
-            HStack(spacing: 6) {
+            let subtitleLayout = typeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                : AnyLayout(HStackLayout(spacing: 6))
+            subtitleLayout {
                 Text("\(dish.timesEaten) dinners since \(dish.meals.last?.date.formatted(.dateTime.month(.abbreviated).year()) ?? "")")
                 if let average = dish.averageStars {
-                    Text("·").accessibilityHidden(true)
-                    Text("your average")
-                    CompactStars(stars: average)
+                    HStack(spacing: 4) {
+                        Text("your average")
+                        CompactStars(stars: average)
+                    }
                 }
             }
             .font(.subheadline)

@@ -386,3 +386,40 @@ final class TimeAgoBoundaryTests: XCTestCase {
         XCTAssertEqual(SundayCalendar.timeAgo(days: 548), "2 years ago")
     }
 }
+
+final class PersonalInsightTests: XCTestCase {
+    var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
+        calendar.date(from: DateComponents(year: y, month: m, day: d, hour: 18))!
+    }
+
+    func testOrdinalAndComparison() {
+        let first = MealSummary(id: UUID(), name: "Lemon chicken", date: date(2025, 8, 3), stars: 3)
+        let second = MealSummary(id: UUID(), name: "Lemon chicken", date: date(2026, 1, 4), stars: nil)
+        let third = MealSummary(id: UUID(), name: "Lemon chicken", date: date(2026, 9, 27), stars: 5)
+        let dish = Suggestions.group([first, second, third]).first!
+        XCTAssertEqual(PersonalInsight.line(for: third.id, in: dish, calendar: calendar),
+                       "Your 3rd lemon chicken. You liked it more than in August 2025.")
+        XCTAssertEqual(PersonalInsight.line(for: first.id, in: dish, calendar: calendar),
+                       "Your first lemon chicken. Here's to the next one.")
+        XCTAssertNil(PersonalInsight.line(for: second.id, in: dish, calendar: calendar), "unrated: nothing to say")
+    }
+
+    func testOrdinals() {
+        XCTAssertEqual(PersonalInsight.ordinalString(2), "2nd")
+        XCTAssertEqual(PersonalInsight.ordinalString(11), "11th")
+        XCTAssertEqual(PersonalInsight.ordinalString(22), "22nd")
+        XCTAssertEqual(PersonalInsight.ordinalString(103), "103rd")
+    }
+
+    func testUpcomingSunday() {
+        // Friday Oct 2 2026 -> Sunday Oct 4; Sunday stays.
+        XCTAssertEqual(calendar.component(.day, from: SundayCalendar.upcomingSunday(onOrAfter: date(2026, 10, 2), calendar: calendar)), 4)
+        XCTAssertEqual(calendar.component(.day, from: SundayCalendar.upcomingSunday(onOrAfter: date(2026, 10, 4), calendar: calendar)), 4)
+    }
+}

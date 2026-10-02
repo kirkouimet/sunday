@@ -24,10 +24,18 @@ struct FamilyView: View {
             Form {
                 if !meals.isEmpty {
                     statsHero
+                }
+                // A family of one: the invite is the most important thing here.
+                if store.role == .solo {
+                    familySection
+                }
+                if !meals.isEmpty {
                     funStats
                 }
                 accountWarning
-                familySection
+                if store.role != .solo {
+                    familySection
+                }
                 remindersSection
 
                 Section("Seasons") {
@@ -143,12 +151,13 @@ struct FamilyView: View {
         let topCook = cookCounts.max { $0.value.count < $1.value.count }
         let first = meals.last
         Section {
-            if let mostMade, mostMade.timesEaten > 1 {
+            // Superlatives only once there's something to compare.
+            if let mostMade, mostMade.timesEaten >= 3 {
                 LabeledContent("Most made") {
                     Text("\(mostMade.displayName) · \(mostMade.timesEaten)×").keepsake()
                 }
             }
-            if let topCook, let name = topCook.value.first {
+            if cookCounts.count >= 2, let topCook, let name = topCook.value.first {
                 LabeledContent("Head chef") {
                     HStack(spacing: 6) {
                         CookAvatar(name: name, size: 20)

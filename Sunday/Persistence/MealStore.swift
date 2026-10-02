@@ -181,9 +181,9 @@ final class MealStore: ObservableObject {
             throw error
         }
 
-        if isNew {
+        if !meal.sortedPhotos.isEmpty {
             FamilyNotifier.markKnown(meal.id)
-            checkMilestone()
+            if isNew || draft.photos.allSatisfy({ $0.existing == nil }) { checkMilestone() }
         }
         if let photoToTag { tagInBackground(meal.objectID, photo: photoToTag) }
         WidgetPublisher.publish(store: self)
@@ -195,6 +195,32 @@ final class MealStore: ObservableObject {
             Task { await addToFamilyShare(objectID) }
         }
         return meal
+    }
+
+    /// "Who's cooking?" from the Tonight card.
+    func setCook(_ cook: String?, for meal: Meal) {
+        guard !meal.isGone else { return }
+        meal.cook = cook
+        saveQuietly()
+    }
+
+    /// Plan a dinner for this Sunday (or today, if it's Sunday): a dinner
+    /// with a name and no photo yet. Snapping it later joins this dinner.
+    @discardableResult
+    func planSunday(_ name: String) async throws -> Meal {
+        let calendar = Calendar.current
+        let sunday = SundayCalendar.upcomingSunday(onOrAfter: .now)
+        if let existing = (try? context.fetch(NSFetchRequest<Meal>(entityName: "Meal")))?.first(where: {
+            $0.date.map { calendar.isDate($0, inSameDayAs: sunday) } ?? false
+        }), existing.sortedPhotos.isEmpty {
+            existing.name = name
+            saveQuietly()
+            return existing
+        }
+        var draft = MealDraft()
+        draft.name = name
+        draft.date = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: sunday) ?? sunday
+        return try await save(draft)
     }
 
     /// Vision takes up to a second; don't make the cook wait for it.

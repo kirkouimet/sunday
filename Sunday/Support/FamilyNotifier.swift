@@ -32,7 +32,9 @@ enum FamilyNotifier {
     /// Call after each CloudKit import.
     static func checkForNewDinners(store: MealStore) {
         let request = NSFetchRequest<Meal>(entityName: "Meal")
-        let meals = (try? store.context.fetch(request)) ?? []
+        // A planned dinner (no photo yet) isn't news; leave it "unknown" so
+        // it announces itself once someone snaps it.
+        let meals = ((try? store.context.fetch(request)) ?? []).filter { !$0.sortedPhotos.isEmpty }
         let ids = Set(meals.compactMap { $0.id?.uuidString })
 
         // Until this device's first full sync (both stores) is done, every

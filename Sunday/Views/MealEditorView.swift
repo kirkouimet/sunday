@@ -88,6 +88,7 @@ struct MealEditorView: View {
                              : joinedMeal != nil ? "Add to dinner"
                              : draft.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar { keyboardSuggestions }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -231,14 +232,20 @@ struct MealEditorView: View {
                 .submitLabel(.done)
                 .onSubmit { if canSave { save() } }
 
-            if !nameSuggestions.isEmpty {
+            dishHistoryLine
+        }
+    }
+
+    /// Earlier dish names, right above the keyboard where your thumbs are.
+    @ToolbarContentBuilder
+    private var keyboardSuggestions: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            if focusedField == .name, !nameSuggestions.isEmpty {
                 chipRow(nameSuggestions) { name in
                     draft.name = name
                     focusedField = nil
                 }
             }
-
-            dishHistoryLine
         }
     }
 
@@ -390,7 +397,7 @@ struct MealEditorView: View {
         Button {
             withAnimation { dismissedSameDayPrompt = true }
         } label: {
-            Text("It's a different dinner").frame(maxWidth: .infinity)
+            Text("Different dinner").frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
     }
@@ -435,6 +442,11 @@ struct MealEditorView: View {
         } else {
             draft.cook = lastCook
             draft.date = SundayCalendar.mostRecentSunday(onOrBefore: .now)
+            // A dinner planned for today (name and cook, no photo yet): this
+            // photo is for it, so join it without asking.
+            if let plan = sameDayMeal, plan.sortedPhotos.isEmpty {
+                join(plan)
+            }
             // On Sunday you're at the table: go straight to the camera.
             // Any other day you're probably catching up from the camera roll.
             if CameraPicker.isAvailable, SundayCalendar.isSunday(.now) {
