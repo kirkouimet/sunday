@@ -170,24 +170,28 @@ struct PhotoThumbnail: View {
 
     private var taskKey: String {
         guard hasPhoto else { return "none" }
-        // Changes when the image data arrives from iCloud, so we retry.
-        return "\(photo.objectID)-\(photo.thumbnailData?.count ?? 0)-\(photo.imageData?.count ?? 0)"
+        // Changes when the image data arrives from iCloud, so we retry. Only
+        // touch the full image when it's the one we show (it's ~10x larger).
+        let size = useFullImage ? (photo.imageData?.count ?? 0) : (photo.thumbnailData?.count ?? 0)
+        return "\(photo.objectID)-\(size)"
     }
 
     var body: some View {
-        ZStack {
-            Rectangle().fill(Color.secondary.opacity(0.12))
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else if !hasPhoto {
-                Image(systemName: "fork.knife")
-                    .font(.largeTitle)
-                    .foregroundStyle(.secondary)
+        // Color.clear takes exactly the size it's offered, so a scaled-to-fill
+        // photo can never push the layout around or spill past the frame.
+        Color.secondary.opacity(0.12)
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else if !hasPhoto {
+                    Image(systemName: "fork.knife")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                }
             }
-        }
-        .clipped()
+            .clipped()
         .task(id: taskKey) {
             image = hasPhoto ? await PhotoCache.image(for: photo, full: useFullImage) : nil
         }

@@ -85,18 +85,21 @@ public struct Suggestions: Sendable {
             }
     }
 
-    /// Meals from earlier years that fell within `windowDays` of today's date.
+    /// Meals from earlier years that fell within `windowDays` of today's date
+    /// (across year boundaries: on Jan 2, a Dec 30 dinner counts).
     public func thisTimeInPastYears(windowDays: Int = 21) -> [MealSummary] {
-        let currentYear = calendar.component(.year, from: now)
         let today = calendar.dateComponents([.month, .day], from: now)
+        let recentCutoff = calendar.date(byAdding: .day, value: -300, to: now) ?? now
         return dishes.flatMap(\.meals)
             .filter { meal in
+                guard meal.date < recentCutoff else { return false }
                 let year = calendar.component(.year, from: meal.date)
-                guard year < currentYear,
-                      let anniversary = calendar.date(from: DateComponents(year: year, month: today.month, day: today.day))
-                else { return false }
-                let days = abs(calendar.dateComponents([.day], from: anniversary, to: meal.date).day ?? .max)
-                return days <= windowDays
+                let closest = [year - 1, year, year + 1].compactMap { y -> Int? in
+                    guard let anniversary = calendar.date(from: DateComponents(year: y, month: today.month, day: today.day))
+                    else { return nil }
+                    return abs(calendar.dateComponents([.day], from: anniversary, to: meal.date).day ?? .max)
+                }.min() ?? .max
+                return closest <= windowDays
             }
             .sorted { $0.date > $1.date }
     }
@@ -121,20 +124,18 @@ public struct Suggestions: Sendable {
             .map(\.0)
     }
 
-    /// If a holiday is coming up within `days`, it and the dinners from that
-    /// holiday in earlier years (newest first).
+    /// The next holiday within `days` that the family has history for, and the
+    /// dinners from that holiday in earlier years (newest first).
     public func upcomingHoliday(within days: Int = 14) -> (holiday: Holiday, meals: [MealSummary])? {
         let today = calendar.startOfDay(for: now)
+        let recentCutoff = calendar.date(byAdding: .day, value: -300, to: now) ?? now
+        let pastMeals = dishes.flatMap(\.meals).filter { $0.date < recentCutoff }
         for offset in 0...days {
             guard let day = calendar.date(byAdding: .day, value: offset, to: today),
-                  let holiday = Holidays.holiday(near: day, calendar: calendar)
+                  let holiday = Holidays.holiday(on: day, calendar: calendar)
             else { continue }
-            let currentYear = calendar.component(.year, from: now)
-            let past = dishes.flatMap(\.meals).filter { meal in
-                calendar.component(.year, from: meal.date) < currentYear
-                    && Holidays.holiday(near: meal.date, calendar: calendar)?.emoji == holiday.emoji
-            }
-            guard !past.isEmpty else { return nil }
+            let past = pastMeals.filter { Holidays.holiday(near: $0.date, calendar: calendar)?.emoji == holiday.emoji }
+            guard !past.isEmpty else { continue }
             return (holiday, past.sorted { $0.date > $1.date })
         }
         return nil

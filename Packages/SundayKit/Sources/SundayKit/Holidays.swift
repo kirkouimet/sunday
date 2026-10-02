@@ -58,6 +58,27 @@ public enum Holidays {
         return best?.holiday
     }
 
+    /// The holiday that falls exactly on `date`, if any.
+    public static func holiday(on date: Date, calendar: Calendar = .current) -> Holiday? {
+        let year = calendar.component(.year, from: date)
+        let parts = calendar.dateComponents([.month, .day], from: date)
+        func same(_ other: Date?) -> Bool { other.map { calendar.isDate($0, inSameDayAs: date) } ?? false }
+
+        if same(easter(year, calendar: calendar)) { return Holiday(name: "Easter", emoji: "🐣") }
+        if same(nthWeekday(2, weekday: 1, month: 5, year: year, calendar: calendar)) { return Holiday(name: "Mother's Day", emoji: "💐") }
+        if same(nthWeekday(3, weekday: 1, month: 6, year: year, calendar: calendar)) { return Holiday(name: "Father's Day", emoji: "👔") }
+        if same(nthWeekday(4, weekday: 5, month: 11, year: year, calendar: calendar)) { return Holiday(name: "Thanksgiving", emoji: "🦃") }
+        switch (parts.month, parts.day) {
+        case (12, 25): return Holiday(name: "Christmas", emoji: "🎄")
+        case (12, 31): return Holiday(name: "New Year's Eve", emoji: "🎆")
+        case (1, 1): return Holiday(name: "New Year's", emoji: "🎆")
+        case (7, 4): return Holiday(name: "Fourth of July", emoji: "🎇")
+        case (10, 31): return Holiday(name: "Halloween", emoji: "🎃")
+        case (2, 14): return Holiday(name: "Valentine's Day", emoji: "❤️")
+        default: return nil
+        }
+    }
+
     /// Western (Gregorian) Easter Sunday, anonymous Gregorian algorithm.
     public static func easter(_ year: Int, calendar: Calendar = .current) -> Date? {
         let a = year % 19, b = year / 100, c = year % 100

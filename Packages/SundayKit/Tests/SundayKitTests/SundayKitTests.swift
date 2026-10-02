@@ -172,10 +172,9 @@ final class WidgetStorageTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let id = UUID()
-        let item = WidgetSnapshot.Item(title: "Chili", caption: "Last Sunday", date: Date(timeIntervalSince1970: 1_800_000_000),
-                                       imageFileName: "a.jpg", mealID: id)
-        let snapshot = WidgetSnapshot(latest: item, memory: nil, streak: 3, totalDinners: 12,
+        let item = WidgetSnapshot.Item(title: "Chili", date: Date(timeIntervalSince1970: 1_800_000_000),
+                                       imageFileName: "a.jpg", mealID: UUID())
+        let snapshot = WidgetSnapshot(latest: item, memories: [], recentDates: [item.date], totalDinners: 12,
                                       generatedAt: Date(timeIntervalSince1970: 1_800_000_100))
         try WidgetStorage.write(snapshot, images: ["a.jpg": Data([1, 2, 3])], to: directory)
         XCTAssertEqual(WidgetStorage.read(from: directory), snapshot)
@@ -184,6 +183,29 @@ final class WidgetStorageTests: XCTestCase {
         try WidgetStorage.write(.empty, images: ["b.jpg": Data([4])], to: directory)
         XCTAssertNil(WidgetStorage.imageData(named: "a.jpg", in: directory), "old thumbnails are removed")
         XCTAssertEqual(WidgetStorage.read(from: directory).totalDinners, 0)
+
+        var later = snapshot
+        later.generatedAt = .now
+        XCTAssertTrue(later.hasSameContent(as: snapshot))
+    }
+
+    func testCaptionsAndMemoryDependOnTheDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        func d(_ y: Int, _ m: Int, _ day: Int) -> Date { calendar.date(from: DateComponents(year: y, month: m, day: day, hour: 18))! }
+
+        let sunday = d(2026, 9, 27)
+        XCTAssertEqual(WidgetSnapshot.latestCaption(for: sunday, on: sunday, calendar: calendar), "Tonight")
+        XCTAssertEqual(WidgetSnapshot.latestCaption(for: sunday, on: d(2026, 10, 2), calendar: calendar), "Last Sunday")
+        XCTAssertNotEqual(WidgetSnapshot.latestCaption(for: sunday, on: d(2026, 10, 5), calendar: calendar), "Last Sunday")
+        XCTAssertEqual(WidgetSnapshot.memoryCaption(for: d(2024, 10, 5), on: d(2026, 10, 2), calendar: calendar), "2 years ago this week")
+
+        let chili = WidgetSnapshot.Item(title: "Chili", date: d(2025, 10, 5), imageFileName: nil, mealID: UUID())
+        let snapshot = WidgetSnapshot(latest: nil, memories: [chili], recentDates: [sunday], totalDinners: 2)
+        XCTAssertEqual(snapshot.memory(on: d(2026, 10, 2), calendar: calendar)?.title, "Chili")
+        XCTAssertNil(snapshot.memory(on: d(2026, 11, 20), calendar: calendar))
+        XCTAssertEqual(snapshot.streak(on: d(2026, 10, 2), calendar: calendar), 1)
+        XCTAssertEqual(snapshot.streak(on: d(2026, 10, 9), calendar: calendar), 0)
     }
 
     func testReadMissingReturnsEmpty() {
@@ -270,5 +292,55 @@ final class UpcomingHolidayTests: XCTestCase {
         let far = Suggestions(meals: [MealSummary(id: UUID(), name: "Turkey", date: date(2025, 11, 30), stars: 5)],
                               now: date(2026, 9, 1), calendar: calendar)
         XCTAssertNil(far.upcomingHoliday())
+    }
+}
+
+final class ReviewRegressionTests: XCTestCase {
+    var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    func date(_ year: Int, _ month: Int, _ day: Int, hour: Int = 18) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+    }
+
+    func testStreakBreaksMidweekWhenLastSundayMissing() {
+        // Friday Oct 2; Sep 27 not logged, Sep 20 logged.
+        XCTAssertEqual(SundayCalendar.streak(mealDates: [date(2026, 9, 20)], now: date(2026, 10, 2), calendar: calendar), 0)
+    }
+
+    func testYearsAgoUsesCalendarYears() {
+        XCTAssertEqual(SundayCalendar.yearsAgo(date(2024, 10, 5), now: date(2026, 10, 2), calendar: calendar), 2)
+        XCTAssertEqual(SundayCalendar.yearsAgo(date(2025, 10, 5), now: date(2026, 10, 2), calendar: calendar), 1)
+    }
+
+    func testPastYearsAcrossYearBoundary() {
+        let meals = [
+            MealSummary(id: UUID(), name: "Prime rib", date: date(2024, 12, 30), stars: 5),
+            MealSummary(id: UUID(), name: "Leftovers", date: date(2025, 12, 30), stars: 3), // 3 days ago: too recent
+        ]
+        let s = Suggestions(meals: meals, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertEqual(s.thisTimeInPastYears(windowDays: 7).map(\.name), ["Prime rib"])
+    }
+
+    func testUpcomingHolidaySkipsHolidaysWithoutHistory() {
+        // Oct 25: Halloween (no history) comes before Thanksgiving... outside 14 days; use Nov 20 window 14
+        let meals = [MealSummary(id: UUID(), name: "Turkey", date: date(2025, 11, 30), stars: 5)]
+        let s = Suggestions(meals: meals, now: date(2026, 10, 28), calendar: calendar)
+        XCTAssertEqual(s.upcomingHoliday(within: 30)?.holiday.emoji, "🦃", "Halloween has no history, keep looking")
+    }
+
+    func testChristmasIsNotComingAfterChristmas() {
+        let meals = [MealSummary(id: UUID(), name: "Ham", date: date(2025, 12, 25), stars: 5)]
+        let s = Suggestions(meals: meals, now: date(2026, 12, 27), calendar: calendar)
+        XCTAssertNotEqual(s.upcomingHoliday(within: 3)?.holiday.name, "Christmas")
+    }
+
+    func testHolidayOnExactDay() {
+        XCTAssertEqual(Holidays.holiday(on: date(2026, 11, 26), calendar: calendar)?.name, "Thanksgiving")
+        XCTAssertNil(Holidays.holiday(on: date(2026, 11, 29), calendar: calendar))
+        XCTAssertEqual(Holidays.holiday(on: date(2026, 4, 5), calendar: calendar)?.name, "Easter")
     }
 }

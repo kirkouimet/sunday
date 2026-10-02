@@ -54,8 +54,8 @@ enum Reminders {
         let ratings = (try? store.context.fetch(NSFetchRequest<Rating>(entityName: "Rating"))) ?? []
         let suggestions = Suggestions(meals: store.summaries(meals: meals, ratings: ratings))
         guard let past = suggestions.thisTimeInPastYears(windowDays: 7).first else { return nil }
-        let years = Calendar.current.dateComponents([.year], from: past.date, to: .now).year ?? 1
-        let when = years <= 1 ? "A year ago" : "\(years) years ago"
+        let years = SundayCalendar.yearsAgo(past.date)
+        let when = years == 1 ? "A year ago" : "\(years) years ago"
         return "\(when) this week: \(past.name)."
     }
 }

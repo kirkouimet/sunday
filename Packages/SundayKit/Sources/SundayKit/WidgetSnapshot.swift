@@ -2,20 +2,18 @@ import Foundation
 
 /// What the home-screen widget shows. The app writes it to the shared App
 /// Group container; the widget only ever reads it (widgets can't run the
-/// CloudKit-backed store themselves).
+/// CloudKit-backed store themselves). It holds dates, not captions, so the
+/// widget can say "Tonight" / "A year ago this week" correctly on any day.
 public struct WidgetSnapshot: Codable, Equatable, Sendable {
     public struct Item: Codable, Equatable, Sendable {
         public var title: String
-        public var caption: String
         public var date: Date
         /// File name of a JPEG thumbnail next to the snapshot, if any.
         public var imageFileName: String?
-        /// `sunday://meal/<uuid>` for tapping through.
         public var mealID: UUID
 
-        public init(title: String, caption: String, date: Date, imageFileName: String?, mealID: UUID) {
+        public init(title: String, date: Date, imageFileName: String?, mealID: UUID) {
             self.title = title
-            self.caption = caption
             self.date = date
             self.imageFileName = imageFileName
             self.mealID = mealID
@@ -23,20 +21,60 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
     }
 
     public var latest: Item?
-    public var memory: Item?
-    public var streak: Int
+    /// Past-year dinners near the coming days; the widget picks per day.
+    public var memories: [Item]
+    /// Recent dinner dates, for computing the streak on any day.
+    public var recentDates: [Date]
     public var totalDinners: Int
     public var generatedAt: Date
 
-    public init(latest: Item?, memory: Item?, streak: Int, totalDinners: Int, generatedAt: Date = .now) {
+    public init(latest: Item?, memories: [Item], recentDates: [Date], totalDinners: Int, generatedAt: Date = .now) {
         self.latest = latest
-        self.memory = memory
-        self.streak = streak
+        self.memories = memories
+        self.recentDates = recentDates
         self.totalDinners = totalDinners
         self.generatedAt = generatedAt
     }
 
-    public static let empty = WidgetSnapshot(latest: nil, memory: nil, streak: 0, totalDinners: 0)
+    public static let empty = WidgetSnapshot(latest: nil, memories: [], recentDates: [], totalDinners: 0,
+                                             generatedAt: Date(timeIntervalSince1970: 0))
+
+    /// Same content, ignoring when it was generated.
+    public func hasSameContent(as other: WidgetSnapshot) -> Bool {
+        var a = self, b = other
+        a.generatedAt = .distantPast
+        b.generatedAt = .distantPast
+        return a == b
+    }
+
+    // MARK: Per-day presentation
+
+    /// The "this week in years past" dinner for `day`, if any.
+    public func memory(on day: Date, calendar: Calendar = .current) -> Item? {
+        let summaries = memories.map { MealSummary(id: $0.mealID, name: $0.title, date: $0.date, stars: nil) }
+        guard let pick = Suggestions(meals: summaries, now: day, calendar: calendar).thisTimeInPastYears(windowDays: 7).first
+        else { return nil }
+        let item = memories.first { $0.mealID == pick.id }
+        return item?.mealID == latest?.mealID ? nil : item
+    }
+
+    public func streak(on day: Date, calendar: Calendar = .current) -> Int {
+        SundayCalendar.streak(mealDates: recentDates, now: day, calendar: calendar)
+    }
+
+    public static func latestCaption(for date: Date, on day: Date, calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: day) { return "Tonight" }
+        if SundayCalendar.isSunday(date, calendar: calendar),
+           calendar.isDate(date, inSameDayAs: SundayCalendar.mostRecentSunday(onOrBefore: day, calendar: calendar)) {
+            return "Last Sunday"
+        }
+        return date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+    }
+
+    public static func memoryCaption(for date: Date, on day: Date, calendar: Calendar = .current) -> String {
+        let years = SundayCalendar.yearsAgo(date, now: day, calendar: calendar)
+        return years == 1 ? "A year ago this week" : "\(years) years ago this week"
+    }
 }
 
 public enum WidgetStorage {
@@ -61,15 +99,17 @@ public enum WidgetStorage {
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        // Replace old thumbnails so the container doesn't grow forever.
+        for (name, data) in images where !fm.fileExists(atPath: directory.appendingPathComponent(name).path) {
+            try data.write(to: directory.appendingPathComponent(name), options: .atomic)
+        }
+        try encoder.encode(snapshot).write(to: directory.appendingPathComponent(fileName), options: .atomic)
+
+        // Only now remove thumbnails the new snapshot no longer uses, so the
+        // widget never reads a snapshot pointing at a deleted image.
         let keep = Set(images.keys).union([fileName])
         for existing in (try? fm.contentsOfDirectory(atPath: directory.path)) ?? [] where !keep.contains(existing) {
             try? fm.removeItem(at: directory.appendingPathComponent(existing))
         }
-        for (name, data) in images {
-            try data.write(to: directory.appendingPathComponent(name), options: .atomic)
-        }
-        try encoder.encode(snapshot).write(to: directory.appendingPathComponent(fileName), options: .atomic)
     }
 
     public static func imageData(named name: String?, in directory: URL? = directory) -> Data? {

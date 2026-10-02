@@ -7,60 +7,50 @@ import os
 @MainActor
 enum WidgetPublisher {
     private static let logger = Logger(subsystem: "com.kirkouimet.sunday", category: "widget")
+    private static var lastPublished: WidgetSnapshot?
 
     static func publish(store: MealStore) {
         guard !PersistenceController.isUITesting else { return }
         let mealsRequest = NSFetchRequest<Meal>(entityName: "Meal")
         mealsRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Meal.date, ascending: false)]
-        let ratingsRequest = NSFetchRequest<Rating>(entityName: "Rating")
-        ratingsRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Rating.updatedAt, ascending: false)]
         let meals = (try? store.context.fetch(mealsRequest)) ?? []
-        let ratings = (try? store.context.fetch(ratingsRequest)) ?? []
 
-        let suggestions = Suggestions(meals: store.summaries(meals: meals, ratings: ratings), hemisphere: .current)
         var images: [String: Data] = [:]
-
-        func item(for meal: Meal?, caption: String) -> WidgetSnapshot.Item? {
-            guard let meal, let id = meal.id, let date = meal.date else { return nil }
+        func item(for meal: Meal) -> WidgetSnapshot.Item? {
+            guard let id = meal.id, let date = meal.date else { return nil }
             var fileName: String?
-            if let thumbnail = meal.sortedPhotos.first?.thumbnailData {
-                fileName = "\(id.uuidString).jpg"
+            // Named by photo, so a changed cover photo gets a new file.
+            if let photo = meal.sortedPhotos.first, let photoID = photo.id, let thumbnail = photo.thumbnailData {
+                fileName = "\(photoID.uuidString).jpg"
                 images[fileName!] = thumbnail
             }
-            return .init(title: meal.displayName, caption: caption, date: date, imageFileName: fileName, mealID: id)
+            return .init(title: meal.displayName, date: date, imageFileName: fileName, mealID: id)
         }
 
-        let latestMeal = meals.first
-        let latest = item(for: latestMeal, caption: latestMeal?.date.map(relativeCaption) ?? "")
-
-        var memory: WidgetSnapshot.Item?
-        if let past = suggestions.thisTimeInPastYears(windowDays: 7).first,
-           let pastMeal = meals.first(where: { $0.id == past.id }) {
-            let years = max(1, Calendar.current.dateComponents([.year], from: past.date, to: .now).year ?? 1)
-            memory = item(for: pastMeal, caption: years == 1 ? "A year ago this week" : "\(years) years ago this week")
+        // Past-year dinners that could be "this week in years past" at any
+        // point in the next week (the widget picks per day).
+        let summaries = meals.compactMap { m -> MealSummary? in
+            guard let id = m.id, let date = m.date else { return nil }
+            return MealSummary(id: id, name: m.displayName, date: date, stars: nil)
         }
+        let nextWeek = Calendar.current.date(byAdding: .day, value: 4, to: .now) ?? .now
+        let candidateIDs = Set(Suggestions(meals: summaries, now: nextWeek).thisTimeInPastYears(windowDays: 11).prefix(8).map(\.id))
+        let memories = meals.filter { $0.id.map(candidateIDs.contains) ?? false }.compactMap(item(for:))
 
         let snapshot = WidgetSnapshot(
-            latest: latest,
-            memory: memory,
-            streak: SundayCalendar.streak(mealDates: meals.compactMap(\.date)),
+            latest: meals.first.flatMap(item(for:)),
+            memories: memories,
+            recentDates: Array(meals.compactMap(\.date).prefix(120)),
             totalDinners: meals.count
         )
+
+        if let lastPublished, lastPublished.hasSameContent(as: snapshot) { return }
         do {
             try WidgetStorage.write(snapshot, images: images)
+            lastPublished = snapshot
             WidgetCenter.shared.reloadAllTimelines()
         } catch {
             logger.error("Writing widget snapshot failed: \(error.localizedDescription)")
         }
-    }
-
-    private static func relativeCaption(_ date: Date) -> String {
-        let calendar = Calendar.current
-        if calendar.isDateInToday(date) { return "Tonight" }
-        if SundayCalendar.isSunday(date),
-           calendar.isDate(date, inSameDayAs: SundayCalendar.mostRecentSunday(onOrBefore: .now)) {
-            return "Last Sunday"
-        }
-        return date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
     }
 }

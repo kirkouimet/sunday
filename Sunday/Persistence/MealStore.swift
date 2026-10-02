@@ -28,8 +28,11 @@ struct MealDraft {
         cook = meal.cook ?? ""
         notes = meal.notes ?? ""
         self.stars = stars
-        photos = meal.sortedPhotos.compactMap { photo in
-            guard let data = photo.thumbnailData ?? photo.imageData, let image = UIImage(data: data) else { return nil }
+        // Keep every saved photo, even one whose image hasn't downloaded from
+        // iCloud yet; dropping it here would delete it on save.
+        photos = meal.sortedPhotos.map { photo in
+            let image = (photo.thumbnailData ?? photo.imageData).flatMap(UIImage.init(data:))
+                ?? UIImage(systemName: "photo") ?? UIImage()
             return DraftPhoto(image: image, existing: photo)
         }
     }
@@ -60,23 +63,44 @@ final class MealStore: ObservableObject {
     @Published private(set) var share: CKShare?
     @Published private(set) var role: FamilyRole = .solo
     @Published private(set) var accountStatus: CKAccountStatus = .couldNotDetermine
-    /// True once CloudKit has finished at least one import on this device.
-    /// Until then we can't know whether this person already owns or joined a
-    /// family, so creating a new one would risk a duplicate.
+    /// True once CloudKit has finished an import for *both* stores on this
+    /// device. Until then we can't know whether this person already owns or
+    /// joined a family (creating one would risk a duplicate), and ratings may
+    /// have arrived before the dinners they belong to.
     @Published private(set) var hasCompletedFirstImport: Bool
     /// Set when a save crosses a milestone (1st, 50th, 100th dinner...).
     @Published var milestone: String?
 
-    private static let firstImportKey = "didCompleteFirstCloudKitImport"
+    private static let importedStoresKey = "importedCloudKitStoreIdentifiers"
+    private static let orphanedRatingsKey = "orphanedRatingsFirstSeen"
+    /// How long a rating must point at a missing dinner before we delete it.
+    private static let orphanGracePeriod: TimeInterval = 21 * 86_400
     private let logger = Logger(subsystem: "com.kirkouimet.sunday", category: "store")
     private var observers: [NSObjectProtocol] = []
     private var reconcileTask: Task<Void, Never>?
+    private var sharingInFlight = Set<NSManagedObjectID>()
+    private var sharedImportFallback: Task<Void, Never>?
 
     init(persistence: PersistenceController) {
         self.persistence = persistence
-        hasCompletedFirstImport = !persistence.isCloudBacked || UserDefaults.standard.bool(forKey: Self.firstImportKey)
+        hasCompletedFirstImport = false // every stored property set; now compute it
+        hasCompletedFirstImport = !persistence.isCloudBacked || haveImportedAllStores
         refreshShare()
         observeCloudKit()
+    }
+
+    private var requiredStoreIdentifiers: Set<String> {
+        Set([persistence.privateStore?.identifier, persistence.sharedStore?.identifier].compactMap { $0 })
+    }
+
+    private var importedStoreIdentifiers: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Self.importedStoresKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.importedStoresKey) }
+    }
+
+    private var haveImportedAllStores: Bool {
+        let required = requiredStoreIdentifiers
+        return !required.isEmpty && required.isSubset(of: importedStoreIdentifiers)
     }
 
     // MARK: Meals
@@ -89,6 +113,8 @@ final class MealStore: ObservableObject {
         for draftPhoto in draft.photos where draftPhoto.existing == nil {
             prepared[draftPhoto.id] = await ImageProcessing.prepareAsync(draftPhoto.image)
         }
+
+        if let existing, existing.isGone { throw SaveError.deletedElsewhere }
 
         let isNew = existing == nil
         let meal = existing ?? Meal(context: context)
@@ -250,15 +276,21 @@ final class MealStore: ObservableObject {
         guard persistence.isCloudBacked else { return }
         do {
             // If you both own a family and joined one, the one you own wins.
+            let newShare: CKShare?
+            let newRole: FamilyRole
             if let store = persistence.privateStore, let owned = try persistence.container.fetchShares(in: store).first {
-                share = owned
-                role = .owner
+                (newShare, newRole) = (owned, .owner)
             } else if let store = persistence.sharedStore, let joined = try persistence.container.fetchShares(in: store).first {
-                share = joined
-                role = .participant
+                (newShare, newRole) = (joined, .participant)
             } else {
-                share = nil
-                role = .solo
+                (newShare, newRole) = (nil, .solo)
+            }
+            // Only publish real changes; this runs on every remote change.
+            if newRole != role { role = newRole }
+            if newShare?.recordID != share?.recordID
+                || newShare?.participants.count != share?.participants.count
+                || newShare?.modificationDate != share?.modificationDate {
+                share = newShare
             }
         } catch {
             logger.error("fetchShares failed: \(error.localizedDescription)")
@@ -324,7 +356,10 @@ final class MealStore: ObservableObject {
 
     /// Moves a meal (and its photos) into the family zone if it isn't there yet.
     private func addToFamilyShare(_ objectID: NSManagedObjectID) async {
-        guard let share, let meal = try? context.existingObject(with: objectID) as? Meal, !meal.isDeleted else { return }
+        guard let share, let meal = try? context.existingObject(with: objectID) as? Meal, !meal.isGone,
+              sharingInFlight.insert(objectID).inserted
+        else { return }
+        defer { sharingInFlight.remove(objectID) }
         do {
             if let current = try persistence.container.fetchShares(matching: [objectID])[objectID],
                current.recordID == share.recordID {
@@ -346,7 +381,9 @@ final class MealStore: ObservableObject {
         guard persistence.isCloudBacked, hasCompletedFirstImport else { return }
         reconcileTask?.cancel()
         reconcileTask = Task { [weak self] in
-            guard let self else { return }
+            // Imports arrive in bursts; settle before doing the work.
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, !Task.isCancelled else { return }
             self.refreshShare()
             if self.role == .owner, let privateStore = self.persistence.privateStore {
                 let request = NSFetchRequest<Meal>(entityName: "Meal")
@@ -359,12 +396,15 @@ final class MealStore: ObservableObject {
                 }
             }
             self.cleanUpRatings()
+            WidgetPublisher.publish(store: self)
         }
     }
 
-    /// Removes duplicate ratings and ratings for dinners someone else deleted.
+    /// Collapses duplicate ratings, and removes ratings for dinners someone
+    /// else deleted. A rating whose dinner is missing might just be ahead of a
+    /// slow import, so it's only deleted after a long grace period.
     private func cleanUpRatings() {
-        guard let privateStore = persistence.privateStore else { return }
+        guard let privateStore = persistence.privateStore, haveImportedAllStores else { return }
         let ratingRequest = NSFetchRequest<Rating>(entityName: "Rating")
         ratingRequest.affectedStores = [privateStore]
         ratingRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Rating.updatedAt, ascending: false)]
@@ -375,13 +415,29 @@ final class MealStore: ObservableObject {
         mealRequest.propertiesToFetch = ["id"]
         let mealIDs = Set(((try? context.fetch(mealRequest)) ?? []).compactMap { $0["id"] as? UUID })
 
+        let now = Date.now
+        let previouslyOrphaned = UserDefaults.standard.dictionary(forKey: Self.orphanedRatingsKey) as? [String: Double] ?? [:]
+        var orphaned: [String: Double] = [:]
         var seen = Set<UUID>()
         for rating in allRatings {
-            guard let mealID = rating.mealID, mealIDs.contains(mealID), seen.insert(mealID).inserted else {
+            guard let mealID = rating.mealID else {
                 context.delete(rating)
                 continue
             }
+            if !seen.insert(mealID).inserted {
+                context.delete(rating) // older duplicate
+                continue
+            }
+            if !mealIDs.contains(mealID), let key = rating.id?.uuidString {
+                let firstSeen = previouslyOrphaned[key] ?? now.timeIntervalSince1970
+                if now.timeIntervalSince1970 - firstSeen > Self.orphanGracePeriod {
+                    context.delete(rating)
+                } else {
+                    orphaned[key] = firstSeen
+                }
+            }
         }
+        UserDefaults.standard.set(orphaned, forKey: Self.orphanedRatingsKey)
         saveQuietly()
     }
 
@@ -398,14 +454,20 @@ final class MealStore: ObservableObject {
                     as? NSPersistentCloudKitContainer.Event,
                   event.type == .import, event.endDate != nil, event.succeeded
             else { return }
+            let storeIdentifier = event.storeIdentifier
             MainActor.assumeIsolated {
                 guard let self else { return }
+                if !self.importedStoreIdentifiers.contains(storeIdentifier) {
+                    self.importedStoreIdentifiers.insert(storeIdentifier)
+                }
                 if !self.hasCompletedFirstImport {
-                    self.hasCompletedFirstImport = true
-                    UserDefaults.standard.set(true, forKey: Self.firstImportKey)
+                    if self.haveImportedAllStores {
+                        self.hasCompletedFirstImport = true
+                    } else if storeIdentifier == self.persistence.privateStore?.identifier {
+                        self.startSharedImportFallback()
+                    }
                 }
                 self.reconcile()
-                WidgetPublisher.publish(store: self)
             }
         })
 
@@ -418,6 +480,22 @@ final class MealStore: ObservableObject {
         })
     }
 
+    /// If you've never joined a family, the shared store may have nothing to
+    /// import and never report one. Once the private store has imported, give
+    /// the shared store a minute, then stop waiting for it.
+    private func startSharedImportFallback() {
+        guard sharedImportFallback == nil else { return }
+        sharedImportFallback = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(60))
+            guard let self, !Task.isCancelled, !self.hasCompletedFirstImport else { return }
+            if let shared = self.persistence.sharedStore?.identifier {
+                self.importedStoreIdentifiers.insert(shared)
+            }
+            self.hasCompletedFirstImport = true
+            self.reconcile()
+        }
+    }
+
     // MARK: Helpers
 
     private func saveQuietly() {
@@ -428,6 +506,14 @@ final class MealStore: ObservableObject {
             logger.error("Save failed: \(error.localizedDescription)")
             context.rollback()
         }
+    }
+}
+
+enum SaveError: LocalizedError {
+    case deletedElsewhere
+
+    var errorDescription: String? {
+        "Someone in the family deleted this dinner while you were editing it."
     }
 }
 

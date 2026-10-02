@@ -18,34 +18,55 @@ struct SnapshotProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
-        // The app reloads timelines whenever dinners change; refresh daily so
-        // captions like "Last Sunday" stay true.
-        let tomorrow = Calendar.current.startOfDay(for: .now.addingTimeInterval(86_400))
-        completion(Timeline(entries: [SnapshotEntry(date: .now, snapshot: WidgetStorage.read())], policy: .after(tomorrow)))
+        // One entry per day for a week, so "Tonight", "Last Sunday", the streak
+        // and the memory stay true even if the app isn't opened. The app also
+        // reloads timelines whenever dinners change.
+        let snapshot = WidgetStorage.read()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        var entries = [SnapshotEntry(date: .now, snapshot: snapshot)]
+        for offset in 1...7 {
+            if let day = calendar.date(byAdding: .day, value: offset, to: today) {
+                entries.append(SnapshotEntry(date: day, snapshot: snapshot))
+            }
+        }
+        completion(Timeline(entries: entries, policy: .atEnd))
     }
 }
 
 extension WidgetSnapshot {
     static let sample = WidgetSnapshot(
-        latest: .init(title: "Lemon chicken", caption: "Last Sunday", date: .now, imageFileName: nil, mealID: UUID()),
-        memory: .init(title: "Chili", caption: "A year ago this week", date: .now, imageFileName: nil, mealID: UUID()),
-        streak: 6,
+        latest: .init(title: "Lemon chicken", date: .now.addingTimeInterval(-86_400 * 3), imageFileName: nil, mealID: UUID()),
+        memories: [.init(title: "Chili", date: Calendar.current.date(byAdding: .year, value: -1, to: .now) ?? .now,
+                         imageFileName: nil, mealID: UUID())],
+        recentDates: [],
         totalDinners: 48
     )
+}
+
+/// What a tile shows on a given day.
+struct TileContent {
+    let item: WidgetSnapshot.Item
+    let caption: String
 }
 
 private let accent = Color(red: 0.851, green: 0.392, blue: 0.212)
 
 struct DinnerTile: View {
-    let item: WidgetSnapshot.Item
+    let content: TileContent
     var compact = false
+
+    private var item: WidgetSnapshot.Item { content.item }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             if let data = WidgetStorage.imageData(named: item.imageFileName), let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
+                Color.clear.overlay {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                }
+                .clipped()
             } else {
                 LinearGradient(colors: [accent, .orange], startPoint: .topLeading, endPoint: .bottomTrailing)
                 Image(systemName: "fork.knife")
@@ -55,7 +76,7 @@ struct DinnerTile: View {
             }
             LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.caption.uppercased())
+                Text(content.caption.uppercased())
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.white.opacity(0.85))
                 Text(item.title)
@@ -65,6 +86,8 @@ struct DinnerTile: View {
             }
             .padding(compact ? 10 : 12)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
     }
 }
 
@@ -84,11 +107,23 @@ struct SundayWidgetView: View {
         .containerBackground(for: .widget) { Color.black }
     }
 
+    private var latest: TileContent? {
+        entry.snapshot.latest.map {
+            TileContent(item: $0, caption: WidgetSnapshot.latestCaption(for: $0.date, on: entry.date))
+        }
+    }
+
+    private var memory: TileContent? {
+        entry.snapshot.memory(on: entry.date).map {
+            TileContent(item: $0, caption: WidgetSnapshot.memoryCaption(for: $0.date, on: entry.date))
+        }
+    }
+
     @ViewBuilder
     private var small: some View {
-        if let item = entry.snapshot.memory ?? entry.snapshot.latest {
-            DinnerTile(item: item, compact: true)
-                .widgetURL(DeepLink.url(forMeal: item.mealID))
+        if let tile = memory ?? latest {
+            DinnerTile(content: tile, compact: true)
+                .widgetURL(DeepLink.url(forMeal: tile.item.mealID))
         } else {
             empty
         }
@@ -96,27 +131,28 @@ struct SundayWidgetView: View {
 
     @ViewBuilder
     private var medium: some View {
-        let items = [entry.snapshot.latest, entry.snapshot.memory].compactMap { $0 }
-        if items.isEmpty {
+        let tiles = [latest, memory].compactMap { $0 }
+        let streak = entry.snapshot.streak(on: entry.date)
+        if tiles.isEmpty {
             empty
         } else {
             HStack(spacing: 2) {
-                ForEach(items, id: \.mealID) { item in
-                    Link(destination: DeepLink.url(forMeal: item.mealID)) {
-                        DinnerTile(item: item, compact: items.count > 1)
+                ForEach(tiles, id: \.item.mealID) { tile in
+                    Link(destination: DeepLink.url(forMeal: tile.item.mealID)) {
+                        DinnerTile(content: tile, compact: tiles.count > 1)
                     }
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if entry.snapshot.streak >= 2 {
-                    Label("\(entry.snapshot.streak)", systemImage: "flame.fill")
+                if streak >= 2 {
+                    Label("\(streak)", systemImage: "flame.fill")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(accent, in: Capsule())
                         .padding(8)
-                        .accessibilityLabel("\(entry.snapshot.streak) Sundays in a row")
+                        .accessibilityLabel("\(streak) Sundays in a row")
                 }
             }
         }

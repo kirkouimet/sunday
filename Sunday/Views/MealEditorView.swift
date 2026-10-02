@@ -256,7 +256,11 @@ struct MealEditorView: View {
             // On Sunday you're at the table: go straight to the camera.
             // Any other day you're probably catching up from the camera roll.
             if CameraPicker.isAvailable, SundayCalendar.isSunday(.now) {
-                isShowingCamera = true
+                // Let the sheet finish presenting before covering it.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(450))
+                    isShowingCamera = true
+                }
             } else {
                 focusedField = .name
             }
@@ -305,6 +309,12 @@ struct MealEditorView: View {
         else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        // EXIF times are local to where the photo was taken; use the recorded
+        // offset when there is one (e.g. "-07:00"), else assume this device's zone.
+        if let offset = exif[kCGImagePropertyExifOffsetTimeOriginal] as? String {
+            formatter.dateFormat = "yyyy:MM:dd HH:mm:ssxxx"
+            if let date = formatter.date(from: raw + offset) { return date }
+        }
         formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
         return formatter.date(from: raw)
     }

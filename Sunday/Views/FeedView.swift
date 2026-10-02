@@ -17,7 +17,6 @@ struct FeedView: View {
     @State private var editingMeal: Meal?
     @EnvironmentObject private var router: AppRouter
 
-    private var starsByMeal: [UUID: Int] { MealStore.starsByMeal(ratings) }
 
     private var isFiltering: Bool { seasonFilter != nil || !MealName.normalize(searchText).isEmpty }
 
@@ -32,9 +31,9 @@ struct FeedView: View {
     }
 
     /// Feed grouped by year, newest first, so years of Sundays read like an album.
-    private var mealsByYear: [(year: Int, meals: [Meal])] {
+    private func mealsByYear(_ meals: [Meal]) -> [(year: Int, meals: [Meal])] {
         let calendar = Calendar.current
-        let grouped = Dictionary(grouping: filteredMeals) { calendar.component(.year, from: $0.date ?? .now) }
+        let grouped = Dictionary(grouping: meals) { calendar.component(.year, from: $0.date ?? .now) }
         return grouped.keys.sorted(by: >).map { ($0, grouped[$0] ?? []) }
     }
 
@@ -42,29 +41,37 @@ struct FeedView: View {
         SundayCalendar.streak(mealDates: meals.compactMap(\.date))
     }
 
-    private var memory: MealSummary? {
-        Suggestions(meals: store.summaries(meals: Array(meals), ratings: Array(ratings)), hemisphere: .current)
-            .thisTimeInPastYears(windowDays: 7).first
+    private func memory(starsByMeal: [UUID: Int]) -> MealSummary? {
+        let summaries = meals.compactMap { meal -> MealSummary? in
+            guard let id = meal.id, let date = meal.date else { return nil }
+            return MealSummary(id: id, name: meal.displayName, date: date, stars: starsByMeal[id])
+        }
+        return Suggestions(meals: summaries, hemisphere: .current).thisTimeInPastYears(windowDays: 7).first
     }
 
     private let columns = [GridItem(.adaptive(minimum: 320), spacing: 20, alignment: .top)]
 
     var body: some View {
+        // Computed once per render rather than per card.
+        let starsByMeal = MealStore.starsByMeal(ratings)
+        let filtered = filteredMeals
+        let memoryItem = isFiltering || meals.isEmpty ? nil : memory(starsByMeal: starsByMeal)
+
         NavigationStack(path: $router.feedPath) {
             ScrollView {
                 if !meals.isEmpty {
                     seasonPicker
-                    if !isFiltering, let memory, let meal = store.meal(withID: memory.id) {
-                        OnThisDayCard(meal: meal, summary: memory)
+                    if let memoryItem, let meal = meals.first(where: { $0.id == memoryItem.id }) {
+                        OnThisDayCard(meal: meal, summary: memoryItem)
                             .padding(.horizontal)
                             .padding(.bottom, 8)
                     }
                 }
                 LazyVGrid(columns: columns, spacing: 20, pinnedViews: [.sectionHeaders]) {
-                    ForEach(mealsByYear, id: \.year) { group in
+                    ForEach(mealsByYear(filtered), id: \.year) { group in
                         Section {
                             ForEach(group.meals) { meal in
-                                card(for: meal)
+                                card(for: meal, stars: meal.id.flatMap { starsByMeal[$0] } ?? 0)
                             }
                         } header: {
                             yearHeader(group.year, count: group.meals.count)
@@ -75,7 +82,7 @@ struct FeedView: View {
                 .padding(.bottom, 24)
             }
             .background(Color(.systemGroupedBackground))
-            .overlay { emptyState }
+            .overlay { emptyState(filtered: filtered) }
             .navigationTitle("Sunday")
             .toolbar {
                 if streak >= 2 {
@@ -111,8 +118,8 @@ struct FeedView: View {
         }
     }
 
-    private func card(for meal: Meal) -> some View {
-        MealCard(meal: meal, stars: meal.id.flatMap { starsByMeal[$0] } ?? 0)
+    private func card(for meal: Meal, stars: Int) -> some View {
+        MealCard(meal: meal, stars: stars)
             .contextMenu {
                 if store.canEdit(meal) {
                     Button {
@@ -170,7 +177,7 @@ struct FeedView: View {
     }
 
     @ViewBuilder
-    private var emptyState: some View {
+    private func emptyState(filtered: [Meal]) -> some View {
         if meals.isEmpty {
             ContentUnavailableView {
                 Label("No dinners yet", systemImage: "fork.knife")
@@ -180,7 +187,7 @@ struct FeedView: View {
                 Button("Add your first dinner") { isAdding = true }
                     .buttonStyle(.borderedProminent)
             }
-        } else if filteredMeals.isEmpty {
+        } else if filtered.isEmpty {
             ContentUnavailableView.search(text: searchText)
         }
     }
@@ -192,8 +199,12 @@ struct MealCard: View {
 
     @EnvironmentObject private var store: MealStore
 
+    /// Set once you rate from the card, so the stars stay put to adjust.
+    @State private var ratedHere = false
+
     /// Nudge everyone to rate recent dinners, right on the card.
     private var invitesRating: Bool {
+        if ratedHere { return true }
         guard stars == 0, let date = meal.date else { return false }
         return Date.now.timeIntervalSince(date) < 7 * 86_400
     }
@@ -215,7 +226,10 @@ struct MealCard: View {
                     Spacer()
                     StarRatingView(stars: Binding(
                         get: { stars },
-                        set: { store.setRating($0, for: meal) }
+                        set: {
+                            ratedHere = true
+                            store.setRating($0, for: meal)
+                        }
                     ), size: 20)
                 }
                 .padding(.horizontal, 14)
@@ -304,7 +318,7 @@ struct OnThisDayCard: View {
     let summary: MealSummary
 
     private var whenText: String {
-        let years = max(1, Calendar.current.dateComponents([.year], from: summary.date, to: .now).year ?? 1)
+        let years = SundayCalendar.yearsAgo(summary.date)
         return years == 1 ? "A year ago this week" : "\(years) years ago this week"
     }
 

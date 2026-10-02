@@ -19,8 +19,10 @@ public enum SundayCalendar {
         guard !sundays.isEmpty else { return 0 }
 
         var cursor = calendar.startOfDay(for: mostRecentSunday(onOrBefore: now, calendar: calendar))
-        // Today's dinner may not be logged yet; don't break the streak for it.
+        // On Sunday itself, tonight's dinner may not be logged yet; don't break
+        // the streak for it. Any other day, an unlogged last Sunday breaks it.
         if !sundays.contains(cursor) {
+            guard isSunday(now, calendar: calendar) else { return 0 }
             guard let previous = calendar.date(byAdding: .day, value: -7, to: cursor) else { return 0 }
             cursor = calendar.startOfDay(for: previous)
         }
@@ -32,6 +34,11 @@ public enum SundayCalendar {
             cursor = calendar.startOfDay(for: previous)
         }
         return count
+    }
+
+    /// Calendar years between a past date and now ("2 years ago"), at least 1.
+    public static func yearsAgo(_ date: Date, now: Date = .now, calendar: Calendar = .current) -> Int {
+        max(1, calendar.component(.year, from: now) - calendar.component(.year, from: date))
     }
 
     public static let milestones: Set<Int> = [1, 10, 25, 50, 52, 100, 150, 200, 250, 300, 365, 500, 1000]
