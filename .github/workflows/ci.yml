@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 # A newer push makes older runs on the same branch pointless (macOS minutes add up).
 concurrency:
@@ -38,7 +39,11 @@ jobs:
             -quiet \
             CODE_SIGNING_ALLOWED=NO
 
+  # Simulator screenshots are slow (~8 Mac minutes, billed 10x on private
+  # repos), so they only run on request: a commit message containing
+  # [shots], or a manual run from the Actions tab.
   screenshots:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[shots]')
     runs-on: macos-15
     needs: build
     timeout-minutes: 30
