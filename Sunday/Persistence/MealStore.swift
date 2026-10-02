@@ -82,6 +82,21 @@ final class MealStore: ObservableObject {
     @Published private(set) var hasCompletedFirstImport: Bool
     /// Set when a save crosses a milestone (1st, 50th, 100th dinner...).
     @Published var milestone: String?
+    /// False from opening the app until the first iCloud import lands (or a
+    /// short wait passes), so a phone opened late doesn't act on stale data.
+    @Published private(set) var isFreshFromFamily = true
+    private var freshnessTask: Task<Void, Never>?
+
+    func didBecomeActive() {
+        guard persistence.isCloudBacked, role != .solo else { return }
+        isFreshFromFamily = false
+        freshnessTask?.cancel()
+        freshnessTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(12))
+            guard !Task.isCancelled else { return }
+            self?.isFreshFromFamily = true
+        }
+    }
 
     private static let importedStoresKey = "importedCloudKitStoreIdentifiers"
     private static let orphanedRatingsKey = "orphanedRatingsFirstSeen"
@@ -277,10 +292,66 @@ final class MealStore: ObservableObject {
     }
 
     func setMyName(_ name: String) {
-        UserDefaults.standard.set(name.trimmingCharacters(in: .whitespaces), forKey: Self.myNameKey)
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        UserDefaults.standard.set(trimmed, forKey: Self.myNameKey)
         objectWillChange.send()
+        recordMember(as: trimmed)
         applyPendingCheckIns()
         LiveDinners.sync(store: self)
+    }
+
+    /// "That's not me": forget this phone's name, and take back a live
+    /// check-in made under it.
+    func clearMyName() {
+        if let me = myName, let live = liveMeal() { removeFromTable(me, meal: live) }
+        UserDefaults.standard.removeObject(forKey: Self.myNameKey)
+        objectWillChange.send()
+        LiveDinners.sync(store: self)
+    }
+
+    // MARK: Members (iCloud account → family name)
+
+    /// The share's owner reads their own record name as a placeholder, so
+    /// the owner is keyed by role instead.
+    private func participantKey(_ participant: CKShare.Participant) -> String? {
+        if participant.role == .owner { return "owner" }
+        guard let recordName = participant.userIdentity.userRecordID?.recordName,
+              recordName != CKCurrentUserDefaultName else { return nil }
+        return recordName
+    }
+
+    private var members: [Member] {
+        (try? context.fetch(NSFetchRequest<Member>(entityName: "Member"))) ?? []
+    }
+
+    /// The family's name for a share participant, if they've said.
+    private func memberName(for participant: CKShare.Participant) -> String? {
+        guard let key = participantKey(participant) else { return nil }
+        return members.filter { $0.participantID == key }
+            .max { ($0.updatedAt ?? .distantPast) < ($1.updatedAt ?? .distantPast) }?.name
+    }
+
+    /// Tell the family which account this name is (shared, in the family zone).
+    private func recordMember(as name: String) {
+        guard role != .solo, !name.isEmpty, let me = share?.currentUserParticipant, let key = participantKey(me) else { return }
+        let existing = members.first { $0.participantID == key }
+        let member = existing ?? Member(context: context)
+        if existing == nil {
+            member.id = UUID()
+            member.participantID = key
+            if let store = storeForNewFamilyObjects { context.assign(member, to: store) }
+        }
+        guard member.name != name || existing == nil else { return }
+        member.name = name
+        member.updatedAt = .now
+        saveQuietly()
+        if let share {
+            let objectID = member.objectID
+            Task {
+                guard let object = try? context.existingObject(with: objectID) else { return }
+                _ = try? await persistence.container.share([object], to: share)
+            }
+        }
     }
 
     /// The dinner happening right now, if someone started it.
@@ -294,6 +365,12 @@ final class MealStore: ObservableObject {
     /// "We're sitting down": the dinner goes live for the whole family.
     func startLive(_ meal: Meal) {
         guard !meal.isGone else { return }
+        // Someone already sat down (maybe on a phone that synced first):
+        // first starter wins; this phone just joins.
+        if meal.isLive {
+            checkIn(meal)
+            return
+        }
         meal.liveAt = .now
         meal.liveEndedAt = nil
         meal.liveBy = myName
@@ -361,6 +438,7 @@ final class MealStore: ObservableObject {
         guard !meal.isGone else { return }
         settle(meal, endedAt: .now)
         saveQuietly()
+        WidgetPublisher.publish(store: self)
         LiveDinners.sync(store: self)
     }
 
@@ -591,20 +669,26 @@ final class MealStore: ObservableObject {
     // MARK: Family sharing
 
     /// Names of people in the family share (owner and accepted members).
-    var participantNames: [String] {
+    /// The family's own names when a member has said ("Dad"); otherwise the
+    /// iCloud name, unless `mappedOnly` (then unknown accounts are left out,
+    /// so "Kirk" never shows up next to "Dad").
+    func participantNames(mappedOnly: Bool = false) -> [String] {
         (share?.participants ?? []).compactMap { participant -> String? in
-            guard participant.role == .owner || participant.acceptanceStatus == .accepted,
-                  let components = participant.userIdentity.nameComponents else { return nil }
+            guard participant.role == .owner || participant.acceptanceStatus == .accepted else { return nil }
+            if let mapped = memberName(for: participant) { return mapped }
+            guard !mappedOnly, let components = participant.userIdentity.nameComponents else { return nil }
             let name = components.formatted(.name(style: .short))
             return name.isEmpty ? nil : name
         }
     }
 
+    var participantNames: [String] { participantNames() }
+
     /// Everyone we know of at this family's table: share members, cooks and
     /// past guests, most-seen first.
-    func familyNames(from meals: [Meal]) -> [String] {
+    func familyNames(from meals: [Meal], mappedOnly: Bool = false) -> [String] {
         var counts: [String: (name: String, count: Int)] = [:]
-        for name in participantNames { counts[name.lowercased(), default: (name, 0)].count += 1000 }
+        for name in participantNames(mappedOnly: mappedOnly) { counts[name.lowercased(), default: (name, 0)].count += 1000 }
         for meal in meals {
             let people = meal.tablePeople + [meal.cook ?? ""]
             for person in people.map({ $0.trimmingCharacters(in: .whitespaces) }) where !person.isEmpty {
@@ -683,6 +767,7 @@ final class MealStore: ObservableObject {
         let saved = try await persistence.container.persistUpdatedShare(newShare, in: privateStore)
         share = saved
         role = .owner
+        if let me = myName { recordMember(as: me) }
         if FamilyNotifier.isEnabled { _ = await Reminders.requestAuthorization() }
         return saved
     }
@@ -692,6 +777,7 @@ final class MealStore: ObservableObject {
         do {
             _ = try await persistence.container.acceptShareInvitations(from: [metadata], into: sharedStore)
             refreshShare()
+            if let me = myName { recordMember(as: me) }
             if FamilyNotifier.isEnabled { _ = await Reminders.requestAuthorization() }
         } catch {
             logger.error("Accepting share failed: \(error.localizedDescription)")
@@ -811,6 +897,10 @@ final class MealStore: ObservableObject {
                     } else if storeIdentifier == self.persistence.privateStore?.identifier {
                         self.startSharedImportFallback()
                     }
+                }
+                if !self.isFreshFromFamily {
+                    self.isFreshFromFamily = true
+                    self.freshnessTask?.cancel()
                 }
                 if self.persistence.isCloudBacked {
                     FamilyNotifier.checkForNewDinners(store: self)

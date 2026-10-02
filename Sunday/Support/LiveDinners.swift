@@ -40,7 +40,10 @@ enum LiveDinners {
         let live = store.liveMeal()
         let liveID = live?.id?.uuidString
 
-        for activity in Activity<LiveDinnerAttributes>.activities where activity.attributes.mealID != liveID {
+        // Ended activities linger in `activities` until dismissed; only
+        // active ones count, so a resumed dinner starts a fresh one.
+        let active = Activity<LiveDinnerAttributes>.activities.filter { $0.activityState == .active }
+        for activity in active where activity.attributes.mealID != liveID {
             // Leave the final faces up for a bit, then go.
             Task { await activity.end(activity.content, dismissalPolicy: .after(.now.addingTimeInterval(15 * 60))) }
         }
@@ -61,7 +64,7 @@ enum LiveDinners {
         // the evening's end the Lock Screen says so itself.
         let content = ActivityContent(state: state, staleDate: LiveDinner.endsAt(startedAt))
 
-        if let existing = Activity<LiveDinnerAttributes>.activities.first(where: { $0.attributes.mealID == liveID }) {
+        if let existing = active.first(where: { $0.attributes.mealID == liveID }) {
             guard existing.content.state != state else { return }
             Task { await existing.update(content) }
             return

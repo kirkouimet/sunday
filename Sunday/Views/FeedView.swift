@@ -22,6 +22,9 @@ struct FeedView: View {
     /// Snap from the Live card: camera straight onto that dinner.
     @State private var snappingLive: Meal?
     @State private var livePickerItem: PhotosPickerItem?
+    /// "That's dinner" tapped here, not yet sent (Undo is still up).
+    @State private var pendingEnd: Meal?
+    @Environment(\.scenePhase) private var scenePhase
 
     private var isFiltering: Bool { seasonFilter != nil || !MealName.normalize(searchText).isEmpty }
 
@@ -120,12 +123,18 @@ struct FeedView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     switch mode {
                     case .live(let meal)?:
-                        LiveDinnerCard(meal: meal, onSnap: { snappingLive = meal }) { ended in
-                            withAnimation {
-                                toast = UndoToast(text: "Dinner wrapped up") { store.resumeLive(ended) }
+                        // Ended on this phone, waiting out the Undo: the family
+                        // hears nothing until it's final.
+                        if meal.objectID != pendingEnd?.objectID {
+                            LiveDinnerCard(meal: meal, onSnap: { snappingLive = meal }) { ended in
+                                withAnimation {
+                                    pendingEnd = ended
+                                    toast = UndoToast(text: "Dinner wrapped up", undo: { pendingEnd = nil },
+                                                      commit: { commitPendingEnd() })
+                                }
                             }
+                            .padding(.horizontal)
                         }
-                        .padding(.horizontal)
                     case .goLive(let meal)?:
                         GoLiveBanner { store.startLive(meal) }
                             .padding(.horizontal)
@@ -191,6 +200,8 @@ struct FeedView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .task(id: toast.id) {
                         try? await Task.sleep(for: .seconds(6))
+                        guard !Task.isCancelled else { return }
+                        toast.commit?()
                         withAnimation { self.toast = nil }
                     }
                 }
@@ -237,19 +248,41 @@ struct FeedView: View {
             .onChange(of: router.snapRequested) { _, requested in
                 guard requested else { return }
                 router.snapRequested = false
-                isAdding = true
+                // From the Lock Screen or the "dinner is on" notification:
+                // during Live that's a photo for the table, not a new dinner.
+                if let live = store.liveMeal() {
+                    snappingLive = live
+                } else {
+                    isAdding = true
+                }
             }
             .sheet(item: $editingMeal) { meal in
                 MealEditorView(meal: meal)
             }
+            .onChange(of: scenePhase) { _, phase in
+                // Leaving the app makes "That's dinner" final.
+                if phase != .active, pendingEnd != nil {
+                    commitPendingEnd()
+                    toast = nil
+                }
+            }
         }
+    }
+
+    private func commitPendingEnd() {
+        guard let meal = pendingEnd else { return }
+        pendingEnd = nil
+        store.endLive(meal)
     }
 
     private func addLivePhoto(_ image: UIImage, to meal: Meal) {
         Task {
             guard let photo = await store.addLivePhoto(image, to: meal) else { return }
             withAnimation {
-                toast = UndoToast(text: "Added to \(meal.displayName)") { store.deletePhoto(photo) }
+                let text = Connectivity.shared.isOnline
+                    ? "Added to \(meal.displayName)"
+                    : "Saved. Sends when you're back online"
+                toast = UndoToast(text: text, undo: { store.deletePhoto(photo) })
             }
         }
     }
@@ -400,6 +433,10 @@ struct TonightCard: View {
                 .buttonStyle(.bordered)
                 .controlSize(.large)
                 .accessibilityHint("Lets everyone in the family check in and add photos to tonight's dinner.")
+                .disabled(!store.isFreshFromFamily)
+                .overlay {
+                    if !store.isFreshFromFamily { CheckingOverlay() }
+                }
                 Button("Still deciding? Get an idea") { router.showIdeas = true }
                     .font(.subheadline.weight(.medium))
                     .frame(minHeight: 44)
@@ -479,6 +516,10 @@ struct TonightCard: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                     .accessibilityHint("Lets everyone in the family check in and add photos to tonight's dinner.")
+                    .disabled(!store.isFreshFromFamily)
+                    .overlay {
+                        if !store.isFreshFromFamily { CheckingOverlay() }
+                    }
                 }
 
             case .live, .goLive:
@@ -852,4 +893,20 @@ struct UndoToast: Identifiable {
     let id = UUID()
     let text: String
     let undo: () -> Void
+    /// Runs when the toast goes away without Undo.
+    var commit: (() -> Void)? = nil
+}
+
+/// Over "We're sitting down" while a phone opened late catches up, so it
+/// can't restart a dinner someone else already started.
+struct CheckingOverlay: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+            Text("Checking with the family…").font(.subheadline.weight(.medium))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.secondarySystemGroupedBackground).opacity(0.92), in: Capsule())
+        .allowsHitTesting(false)
+    }
 }

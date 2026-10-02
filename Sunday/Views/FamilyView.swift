@@ -18,6 +18,7 @@ struct FamilyView: View {
     @State private var isPreparingShare = false
     @State private var shareError: String?
     @State private var path = NavigationPath()
+    @State private var isChoosingMe = false
 
     /// Dinners that happened (plans don't count until they're confirmed).
     private var history: [Meal] { meals.filter { !$0.isPlan } }
@@ -40,6 +41,7 @@ struct FamilyView: View {
                 accountWarning
                 if store.role != .solo {
                     familySection
+                    thisPhoneSection
                 }
                 remindersSection
 
@@ -62,6 +64,10 @@ struct FamilyView: View {
                 Text(shareError ?? "")
             }
             .task { await store.refreshAccountStatus() }
+            .sheet(isPresented: $isChoosingMe) {
+                WhichOneAreYouView { store.setMyName($0) }
+                    .presentationDetents([.medium, .large])
+            }
         }
     }
 
@@ -223,6 +229,27 @@ struct FamilyView: View {
             Text("Family sharing")
         } footer: {
             Text("Star ratings are always private and stay in your own iCloud.")
+        }
+    }
+
+    /// Who this phone checks in and signs photos as. Fixable, always.
+    private var thisPhoneSection: some View {
+        Section {
+            Button {
+                isChoosingMe = true
+            } label: {
+                HStack(spacing: 12) {
+                    if let me = store.myName { CookAvatar(name: me, size: 30) }
+                    Text("This phone is")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(store.myName ?? "Not set")
+                        .foregroundStyle(.secondary)
+                    Text("Change")
+                }
+            }
+        } footer: {
+            Text("Sunday checks you in and signs your photos with this name.")
         }
     }
 

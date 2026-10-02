@@ -131,6 +131,8 @@ enum FamilyNotifier {
         knownLive.insert(id.uuidString)
         // Only fresh news: a dinner that started a while ago isn't an invite.
         guard Date.now.timeIntervalSince(meal.liveAt ?? .distantPast) < 2 * 3600, !store.isCheckedIn(meal) else { return }
+        // Looking at the app already? The Live card is the news.
+        guard UIApplication.shared.applicationState != .active else { return }
         Task { await postLive(meal, id: id, store: store) }
     }
 

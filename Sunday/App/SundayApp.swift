@@ -47,6 +47,7 @@ struct SundayApp: App {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             store.applyWidgetRatings()
+            store.didBecomeActive()
             store.settleFinishedLive()
             store.applyPendingCheckIns()
             store.reconcile()

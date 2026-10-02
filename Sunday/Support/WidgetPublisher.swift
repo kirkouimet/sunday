@@ -21,7 +21,8 @@ enum WidgetPublisher {
         let toRate = meals.first { meal in
             guard let date = meal.date, Calendar.current.isDate(date, inSameDayAs: lastSunday),
                   Date.now.timeIntervalSince(date) < 4 * 86_400 else { return false }
-            return store.stars(for: meal) == 0
+            // Not while everyone's still at the table.
+            return !meal.isLive && store.stars(for: meal) == 0
         }
         let upcomingPlan = all.filter { $0.isPlan && ($0.date ?? .distantPast) >= startOfToday }
             .min { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }

@@ -79,6 +79,18 @@ final class Photo: NSManagedObject, Identifiable {
     @NSManaged var meal: Meal?
 }
 
+/// Who an iCloud account is at this family's table: "Kirk" is "Dad".
+/// Written when a phone answers "Which one are you?", shared with the
+/// family, so every phone shows family names instead of account names.
+@objc(Member)
+final class Member: NSManagedObject, Identifiable {
+    @NSManaged var id: UUID?
+    /// The account's CloudKit user record name ("owner" for the share's owner).
+    @NSManaged var participantID: String?
+    @NSManaged var name: String?
+    @NSManaged var updatedAt: Date?
+}
+
 /// One person saying "I'm here" at a live dinner. Lives in the dinner's
 /// zone like a photo; never edited, so it can't conflict.
 @objc(CheckIn)
@@ -197,6 +209,13 @@ enum SundayModel {
             photoMeal,
         ])
 
+        let member = entity("Member", [
+            attribute("id", .UUIDAttributeType),
+            attribute("participantID", .stringAttributeType),
+            attribute("name", .stringAttributeType),
+            attribute("updatedAt", .dateAttributeType),
+        ])
+
         let checkIn = entity("CheckIn", [
             attribute("id", .UUIDAttributeType),
             attribute("name", .stringAttributeType),
@@ -227,7 +246,7 @@ enum SundayModel {
         checkInMeal.inverseRelationship = mealCheckIns
 
         let model = NSManagedObjectModel()
-        model.entities = [meal, photo, rating, family, checkIn]
+        model.entities = [meal, photo, rating, family, checkIn, member]
         return model
     }
 }

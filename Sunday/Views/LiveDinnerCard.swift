@@ -14,10 +14,16 @@ struct LiveDinnerCard: View {
     @State private var isChoosingMe = false
     @State private var isConfirmingEnd = false
     @State private var pulse = false
+    @State private var snapAfterNaming = false
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var dishName = ""
     @FocusState private var isNaming: Bool
 
     private var people: [String] { meal.tablePeople }
+
+    private func isMe(_ person: String) -> Bool {
+        store.myName.map { $0.caseInsensitiveCompare(person) == .orderedSame } ?? false
+    }
 
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Meal.date, ascending: false)])
     private var allMeals: FetchedResults<Meal>
@@ -25,7 +31,24 @@ struct LiveDinnerCard: View {
     /// Family regulars who haven't checked in.
     private var missing: [String] {
         let here = Set(people.map { $0.lowercased() })
-        return store.familyNames(from: Array(allMeals.prefix(30))).prefix(6).filter { !here.contains($0.lowercased()) }
+        return store.familyNames(from: Array(allMeals.prefix(30)), mappedOnly: true).prefix(6).filter { !here.contains($0.lowercased()) }
+    }
+
+    /// Photos are signed, so an unnamed phone says whose it is first.
+    private func snap() {
+        if store.myName == nil {
+            snapAfterNaming = true
+            isChoosingMe = true
+        } else {
+            onSnap()
+        }
+    }
+
+    /// Written to whoever isn't here, for the phone that didn't buzz.
+    private var tellTheTableMessage: String {
+        let names = missing.prefix(3).joined(separator: ", ")
+        let greeting = names.isEmpty ? "" : "\(names), "
+        return "\(greeting)dinner's on: \(meal.displayName). Open Sunday and tap I'm here."
     }
 
     private var missingLine: String? {
@@ -48,6 +71,7 @@ struct LiveDinnerCard: View {
         VStack(alignment: .leading, spacing: 0) {
             hero
             VStack(alignment: .leading, spacing: 12) {
+                if typeSize.isAccessibilitySize { tableDetails(onPhoto: false) }
                 if (meal.name ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
                     TextField("What's cooking?", text: $dishName)
                         .font(.title3.weight(.semibold))
@@ -91,12 +115,16 @@ struct LiveDinnerCard: View {
             WhichOneAreYouView { name in
                 store.setMyName(name)
                 store.checkIn(meal)
+                if snapAfterNaming {
+                    snapAfterNaming = false
+                    onSnap()
+                }
             }
             .presentationDetents([.medium, .large])
         }
         .confirmationDialog("Wrap up dinner for everyone?", isPresented: $isConfirmingEnd, titleVisibility: .visible) {
             Button("That's dinner") {
-                store.endLive(meal)
+                // Sent to the family only once the Undo toast has gone.
                 onEnded(meal)
             }
         } message: {
@@ -153,49 +181,70 @@ struct LiveDinnerCard: View {
                         .font(.title2.bold())
                         .keepsake()
                         .lineLimit(2)
-                    // The faces already say how many are here.
-                    let status = LiveDinner.status(cook: meal.cook, people: 0, photos: photos.count)
-                    if !status.isEmpty {
-                        Text(status).font(.subheadline)
-                    }
-                    if !people.isEmpty {
-                        HStack(spacing: -8) {
-                            ForEach(people.prefix(8), id: \.self) { person in
-                                NavigationLink(value: PersonRoute(name: person)) {
-                                    CookAvatar(name: person, size: 34)
-                                        .overlay(Circle().strokeBorder(.white, lineWidth: 2))
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("\(person), at the table")
-                                .contextMenu {
-                                    Button("Not here", systemImage: "person.badge.minus") {
-                                        store.removeFromTable(person, meal: meal)
-                                    }
-                                }
-                            }
-                            // Who's missing: the reason to "Tell the table".
-                            ForEach(missing.prefix(4), id: \.self) { person in
-                                Text(AvatarPalette.initial(for: person))
-                                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                                    .frame(width: 34, height: 34)
-                                    .overlay(Circle().strokeBorder(.white.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])))
-                                    .foregroundStyle(.white.opacity(0.7))
-                                    .padding(.leading, 12)
-                                    .accessibilityLabel("\(person), not here yet")
-                            }
-                        }
-                        .padding(.top, 2)
-                    }
-                    if let line = missingLine {
-                        Text(line)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
+                    // At accessibility sizes the rest moves under the photo,
+                    // where it stays readable.
+                    if !typeSize.isAccessibilitySize { tableDetails(onPhoto: true) }
                 }
                 .foregroundStyle(.white)
                 .padding(16)
             }
             .clipped()
+    }
+
+    /// Status, faces at the table, and who's missing.
+    @ViewBuilder
+    private func tableDetails(onPhoto: Bool) -> some View {
+        let ink: Color = onPhoto ? .white : .primary
+        VStack(alignment: .leading, spacing: 6) {
+            // The faces already say how many are here.
+            let status = LiveDinner.status(cook: meal.cook, people: 0, photos: photos.count)
+            if !status.isEmpty {
+                Text(status).font(.subheadline)
+            }
+            if !people.isEmpty {
+                HStack(spacing: -8) {
+                    ForEach(people.prefix(8), id: \.self) { person in
+                        NavigationLink(value: PersonRoute(name: person)) {
+                            CookAvatar(name: person, size: 34)
+                                .overlay(Circle().strokeBorder(onPhoto ? Color.white : Color(.secondarySystemGroupedBackground), lineWidth: 2))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(person), at the table")
+                        .contextMenu {
+                            if isMe(person) {
+                                Button("That's not me", systemImage: "person.crop.circle.badge.questionmark") {
+                                    store.clearMyName()
+                                    isChoosingMe = true
+                                }
+                            } else if store.canEndLive(meal) {
+                                // Whoever's running dinner can fix the table;
+                                // nobody removes Grandma by a stray long-press.
+                                Button("Not here", systemImage: "person.badge.minus") {
+                                    store.removeFromTable(person, meal: meal)
+                                }
+                            }
+                        }
+                    }
+                    // Who's missing: the reason to "Tell the table".
+                    ForEach(missing.prefix(4), id: \.self) { person in
+                        Text(AvatarPalette.initial(for: person))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .frame(width: 34, height: 34)
+                            .overlay(Circle().strokeBorder(ink.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])))
+                            .foregroundStyle(ink.opacity(0.7))
+                            .padding(.leading, 12)
+                            .accessibilityLabel("\(person), not here yet")
+                    }
+                }
+                .padding(.top, 2)
+            }
+            if let line = missingLine {
+                Text(line)
+                    .font(.caption)
+                    .foregroundStyle(ink.opacity(0.85))
+            }
+        }
+        .foregroundStyle(ink)
     }
 
     @ViewBuilder
@@ -214,7 +263,7 @@ struct LiveDinnerCard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                Button(action: onSnap) {
+                Button(action: snap) {
                     Label("Snap", systemImage: "camera.fill")
                         .labelStyle(.iconOnly)
                         .frame(minWidth: 28)
@@ -222,7 +271,7 @@ struct LiveDinnerCard: View {
                 .buttonStyle(.bordered)
                 .controlSize(.large)
             } else {
-                Button(action: onSnap) {
+                Button(action: snap) {
                     Label("Snap a photo", systemImage: "camera.fill")
                         .frame(maxWidth: .infinity)
                 }
@@ -236,8 +285,7 @@ struct LiveDinnerCard: View {
     /// "That's dinner" for whoever started it or is cooking.
     private var footer: some View {
         HStack {
-            ShareLink(item: DeepLink.live,
-                      message: Text("Dinner's on: \(meal.displayName). Open Sunday and tap I'm here.")) {
+            ShareLink(item: DeepLink.live, message: Text(tellTheTableMessage)) {
                 Label("Tell the table", systemImage: "message")
             }
             Spacer()
@@ -267,7 +315,7 @@ struct WhichOneAreYouView: View {
         NavigationStack {
             List {
                 Section {
-                    ForEach(store.familyNames(from: Array(meals)).prefix(12), id: \.self) { name in
+                    ForEach(store.familyNames(from: Array(meals), mappedOnly: true).prefix(12), id: \.self) { name in
                         Button {
                             choose(name)
                         } label: {

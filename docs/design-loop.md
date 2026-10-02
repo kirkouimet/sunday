@@ -10,6 +10,7 @@ Canvas with screenshots and pinned critiques: claude.ai/design ("Sunday Design R
 | Loop | Maturity | 🚀 | 🧱 | 🎨 | Biggest idea |
 |---|---|---|---|---|---|
 | 0 (baseline) | – | 3 | 6 | 8 | "Tonight" moment; cooks as people; Ideas as a decision tool |
+| 8 | 8/10 | 0 | 2 | 2 | **A four-phone rehearsal, walked through the code** (owner, offline phone, unnamed phone, force-quit phone at large text): "a different class of bug from the screenshot reviews… none are layout problems. They are about time and identity" · 7 bugs · 2 ✂️ |
 | 7 | 8/10 | 0 | 3 | 2 | **Is Live multiplayer now? "Mostly yes, at the data layer"**, but "multiplayer for the person who started dinner; everyone else gets eventually consistent" · 7 bugs at the edges where a 2nd/3rd phone joins · 1 ✂️. Critic: "flat part of the curve, and that's the right place to be… if a loop proposes a new screen, the answer should be no" |
 | 6 | 8/10 | 0 new (Live judged "partly a leap") | 6 | 2 | **Was loop 6 a leap? Partly**: "biggest step since loop 3… the app now has a present tense", but "single-player plumbing underneath" · 6 bugs, all in the new multiplayer core. Critic: "one step-change left: make Live actually multiplayer; then hardening, no new concepts" |
 | 5 | 8/10 | 2 | 3 | 2 | **Sunday Live** (multiplayer, real-time: Live Activity, "I'm here", everyone's photos); talk instead of type (on-device model) · subtraction "worked" · 4 ✂️ · 4 bugs. Critic: "if loop 6 builds that, expect a genuine leap; if it builds screens, marginal gains" |
@@ -131,3 +132,18 @@ Critique (8/10): "Live is structurally multiplayer. The remaining failures are n
 - 🐛 **Grandma's ten minutes can be sorted**: long tellings are split at sentence ends, sorted a piece at a time and merged (ingredients once, steps in order); a typo fix reads the card back in instead of dropping the structure (tested).
 - 🎨 No workout timer on the Lock Screen.
 - Public layer: every leftover count is gone (Save · 1.2k, Fork · 84, "41 people asked", Follow, a second "Since"). The critic's flag stands: anything beyond *a card to share* needs a server, so it's a separate product decision, not a loop item.
+
+## Loop 8 → 9: time and identity (implemented)
+
+Round 8 changed method: with one simulator and no second family, the critic **rehearsed one Sunday across four phones through the code**: Mom (owner, cook), Dad (offline 6:00–6:20), Ellie (phone never named), Grandma June (force-quit, large text). It traced 14 beats. "On paper the Sunday works… five beats still go visibly wrong for a real family." Novelty check: **"Rehearsing beat by beat found a different class of bug from the screenshot reviews. None of these are layout problems. They are about time… and identity."** The screenshots found only the large-text contrast issue.
+
+- 🐛 **iCloud names stop haunting the table.** A `Member` record (account → family name) is written into the family zone when a phone answers *Which one are you?* (also on joining or creating the family). Participant names resolve through it, and *who's missing* and the picker leave unmapped accounts out, so there's no more "Kirk and Eleanor aren't here yet" next to Dad and Ellie. (The owner is keyed by role, since the owner's own record name is a placeholder on their phone.)
+- 🐛 **A wrong identity can be undone.** Long-press your own face → *That's not me* (clears the name, takes back the check-in, asks again). Family has *This phone is Ellie · Change*.
+- 🐛 **Snap from the Lock Screen or the notification** goes straight to the live dinner's camera, not the full form. An unnamed phone asks *Which one are you?* before Snap, so photos are signed.
+- 🐛 **Undo never leaves the phone.** *That's dinner* stays local while the 6-second Undo toast is up (or until you leave the app), then it's sent. The Live Activity sync only counts *active* activities, so a resumed dinner starts a fresh one instead of updating an ended one.
+- 🐛 **A stale phone can't restart dinner.** The first starter wins (`startLive` on a live dinner just checks you in). Until the first import after opening (or 12 seconds), *We're sitting down* reads "Checking with the family…".
+- 🐛 The widget doesn't ask "How was Chili?" while everyone's still at the table; it republishes when dinner ends.
+- 🧱 Offline: a photo snapped in a dead spot says "Saved. Sends when you're back online".
+- ✂️ *Not here* on other people only for whoever started dinner or is cooking (no stray long-press removes Grandma); no "dinner is on" banner while you're looking at the Live card.
+- 🎨 Large text: status, faces and who's missing move under the photo, where they're readable. *Tell the table* is addressed to who's missing ("Grandma June, Sam, dinner's on: Chili…").
+- Not fixable from here, and said plainly: a force-quit phone gets no silent push, so without a server *Tell the table* is the only way to reach Grandma. The critic also wants a real two-device check of the late-phone and Undo beats.
