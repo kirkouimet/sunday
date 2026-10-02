@@ -93,6 +93,7 @@ struct FeedView: View {
                     } label: {
                         Label("Add dinner", systemImage: "plus.circle.fill")
                     }
+                    .accessibilityIdentifier("addDinner")
                 }
             }
             .navigationDestination(for: NSManagedObjectID.self) { id in

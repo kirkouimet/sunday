@@ -1,8 +1,7 @@
 import XCTest
 
-/// Walks every main screen with sample data and saves screenshots, so design
-/// reviews can look at the real app. Set SCREENSHOT_DIR to write PNGs to disk;
-/// they are also attached to the test result either way.
+/// Walks every main screen with sample data and attaches screenshots to the
+/// test result, so design reviews can look at the real app. CI exports them.
 final class ScreenshotTests: XCTestCase {
     override func setUp() {
         continueAfterFailure = true
@@ -13,7 +12,7 @@ final class ScreenshotTests: XCTestCase {
     func testDarkMode() { captureAll(variant: "dark", arguments: ["-uiDarkMode"]) }
 
     func testLargeText() {
-        captureAll(variant: "ax-large",
+        captureAll(variant: "axlarge",
                    arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"])
     }
 
@@ -22,55 +21,76 @@ final class ScreenshotTests: XCTestCase {
         app.launchArguments = ["-uiTesting"] + arguments
         app.launch()
 
-        let card = app.buttons.matching(identifier: "mealCard").firstMatch
-        XCTAssertTrue(card.waitForExistence(timeout: 10), "Feed never showed a dinner")
+        let card = app.buttons["mealCard"].firstMatch
+        guard card.waitForExistence(timeout: 15) else {
+            snap("0-launch-failed", variant)
+            XCTFail("Feed never showed a dinner")
+            return
+        }
         snap("1-feed", variant)
 
         app.swipeUp()
         snap("2-feed-scrolled", variant)
-        app.swipeDown()
-        app.swipeDown()
 
-        card.tap()
+        // Detail
+        let firstCard = app.buttons["mealCard"].firstMatch
+        if firstCard.isHittable {
+            firstCard.tap()
+        } else {
+            app.swipeDown()
+            app.swipeDown()
+            firstCard.tap()
+        }
         sleep(1)
         snap("3-detail", variant)
         app.swipeUp()
         snap("4-detail-history", variant)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-
-        app.buttons["Add dinner"].firstMatch.tap()
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        if back.exists { back.tap() }
         sleep(1)
-        snap("5-new-dinner", variant)
-        let nameField = app.textFields["Name this dinner"]
-        if nameField.waitForExistence(timeout: 3) {
-            nameField.tap()
-            nameField.typeText("Lem")
-            snap("6-new-dinner-typing", variant)
+
+        // New dinner
+        let add = app.buttons["addDinner"].firstMatch
+        if add.waitForExistence(timeout: 5) {
+            add.tap()
+            sleep(1)
+            snap("5-new-dinner", variant)
+            let nameField = app.textFields.firstMatch
+            if nameField.waitForExistence(timeout: 3) {
+                nameField.tap()
+                nameField.typeText("Lem")
+                sleep(1)
+                snap("6-new-dinner-typing", variant)
+            }
+            app.buttons["Cancel"].firstMatch.tap()
+            let discard = app.buttons["Discard"].firstMatch
+            if discard.waitForExistence(timeout: 2) { discard.tap() }
+            sleep(1)
+        } else {
+            XCTFail("No add button")
         }
-        app.buttons["Cancel"].firstMatch.tap()
-        let discard = app.buttons["Discard"]
-        if discard.waitForExistence(timeout: 2) { discard.tap() }
 
-        app.tabBars.buttons["Ideas"].tap()
-        sleep(1)
+        tapTab(app, "Ideas")
         snap("7-ideas", variant)
 
-        app.tabBars.buttons["Family"].tap()
-        sleep(1)
+        tapTab(app, "Family")
         snap("8-family", variant)
     }
 
+    private func tapTab(_ app: XCUIApplication, _ name: String) {
+        let tab = app.tabBars.buttons[name].firstMatch
+        if tab.waitForExistence(timeout: 3) {
+            tab.tap()
+        } else {
+            app.buttons[name].firstMatch.tap()
+        }
+        sleep(1)
+    }
+
     private func snap(_ name: String, _ variant: String) {
-        let screenshot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "\(variant)-\(name)"
         attachment.lifetime = .keepAlways
         add(attachment)
-
-        if let directory = ProcessInfo.processInfo.environment["SCREENSHOT_DIR"], !directory.isEmpty {
-            let url = URL(fileURLWithPath: directory).appendingPathComponent("\(variant)-\(name).png")
-            try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-            try? screenshot.pngRepresentation.write(to: url)
-        }
     }
 }

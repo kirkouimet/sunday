@@ -36,6 +36,8 @@ jobs:
     runs-on: macos-15
     needs: build
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -55,10 +57,7 @@ jobs:
           xcrun simctl list devices | grep "$UDID"
 
       - name: Capture screenshots
-        env:
-          TEST_RUNNER_SCREENSHOT_DIR: ${{ github.workspace }}/screenshots
         run: |
-          mkdir -p screenshots
           xcodebuild test \
             -project Sunday.xcodeproj \
             -scheme Sunday \
@@ -66,12 +65,49 @@ jobs:
             -resultBundlePath Screenshots.xcresult \
             -quiet \
             CODE_SIGNING_ALLOWED=NO
-          ls -la screenshots
 
-      - name: Upload screenshots
+      - name: Report test failures
+        if: failure()
+        run: |
+          xcrun xcresulttool get test-results tests --path Screenshots.xcresult --compact > tests.json
+          python3 - <<'PY'
+          import json
+          def walk(node, path):
+              name = node.get('name', '')
+              if node.get('nodeType') == 'Failure Message':
+                  print('FAIL', path, '::', name)
+              for child in node.get('children', []):
+                  walk(child, path + '/' + name)
+          for test in json.load(open('tests.json')).get('testNodes', []):
+              walk(test, '')
+          PY
+
+      - name: Export screenshots
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots
-          path: screenshots/*.png
-          if-no-files-found: warn
+        run: |
+          mkdir -p shots
+          xcrun xcresulttool export attachments --path Screenshots.xcresult --output-path shots
+          cd shots
+          # Name files after the attachment names from the manifest.
+          python3 - <<'PY'
+          import json, os
+          for test in json.load(open('manifest.json')):
+              for a in test.get('attachments', []):
+                  src = a['exportedFileName']
+                  name = a.get('suggestedHumanReadableName', src)
+                  base = os.path.splitext(name)[0].split('_')[0]
+                  if os.path.exists(src):
+                      os.rename(src, base + '.png')
+          PY
+          ls -la
+
+      - name: Publish screenshots to ci-screenshots branch
+        if: always()
+        run: |
+          cd shots
+          rm -f manifest.json
+          git init -q
+          git checkout -q -b ci-screenshots
+          git add -A
+          git -c user.name="CI" -c user.email="ci@users.noreply.github.com" commit -q -m "Screenshots for ${GITHUB_SHA}" || exit 0
+          git push -f -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-screenshots
