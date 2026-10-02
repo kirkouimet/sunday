@@ -66,7 +66,7 @@ struct MealDetailView: View {
                 VStack(spacing: 0) {
                     voiceRecorderRow
                         .padding()
-                    if storyTeller == nil, RecipeTidier.isAvailable, !recipeText.isEmpty, !isTranscribing {
+                    if storyTeller == nil, untidied != nil || isTidying || tidyMessage != nil {
                         tidyRow
                             .padding(.horizontal)
                             .padding(.bottom, tidyMessage == nil ? 10 : 28)
@@ -261,7 +261,7 @@ struct MealDetailView: View {
                             recipeAudio = meal.storyBy == guest ? meal.storyAudio : nil
                             isWritingRecipe = true
                         } label: {
-                            Label(meal.storyBy == guest ? "Hear \(guest)'s story" : "Ask \(guest) to tell a recipe", systemImage: "mic")
+                            Label(meal.storyBy == guest ? "Hear \(guest)'s story" : "Ask \(guest) to tell a story", systemImage: "mic")
                                 .font(.subheadline)
                         }
                     }
@@ -446,30 +446,9 @@ struct MealDetailView: View {
                     Label("Back to what was said", systemImage: "arrow.uturn.backward")
                 }
                 .buttonStyle(.bordered)
-            } else {
-                Button {
-                    isTidying = true
-                    tidyMessage = nil
-                    Task {
-                        let original = recipeText
-                        switch await RecipeTidier.tidy(original, dish: meal.displayName) {
-                        case .sorted(let recipe):
-                            untidied = original
-                            structure = recipe
-                            recipeText = recipe.formatted
-                        case .tooLong:
-                            tidyMessage = "Too long to sort in one go. Trim it, or sort part of it."
-                        case .failed:
-                            tidyMessage = "Couldn't sort this one. It's saved just as it was said."
-                        }
-                        isTidying = false
-                    }
-                } label: {
-                    Label("Sort into ingredients & steps", systemImage: "wand.and.stars")
-                }
-                .buttonStyle(.bordered)
-                .disabled(isTidying)
-                if isTidying { ProgressView() }
+            } else if isTidying {
+                ProgressView()
+                Text("Sorting into ingredients and steps…").foregroundStyle(.secondary)
             }
             Spacer()
         }
@@ -489,8 +468,32 @@ struct MealDetailView: View {
         if let text = await Transcriber.transcribe(audio),
            recipeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             recipeText = text
+            isTranscribing = false
+            // A recipe sorts itself into ingredients and steps; "Back to what
+            // was said" is the only control. Stories stay as they were told.
+            if storyTeller == nil, RecipeTidier.isAvailable { await tidy() }
         }
         isTranscribing = false
+    }
+
+    private func tidy() async {
+        isTidying = true
+        tidyMessage = nil
+        let original = recipeText
+        switch await RecipeTidier.tidy(original, dish: meal.displayName) {
+        case .sorted(let recipe):
+            // Only if nobody started editing meanwhile.
+            if recipeText == original {
+                untidied = original
+                structure = recipe
+                recipeText = recipe.formatted
+            }
+        case .tooLong:
+            tidyMessage = "Too long to sort. It's saved just as it was said."
+        case .failed:
+            tidyMessage = nil
+        }
+        isTidying = false
     }
 
     private func saveRecipeSheet() async {

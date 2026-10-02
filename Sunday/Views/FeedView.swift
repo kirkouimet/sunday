@@ -24,6 +24,7 @@ struct FeedView: View {
     @State private var livePickerItem: PhotosPickerItem?
     /// "That's dinner" tapped here, not yet sent (Undo is still up).
     @State private var pendingEnd: Meal?
+    @State private var endTimer: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
 
     private var isFiltering: Bool { seasonFilter != nil || !MealName.normalize(searchText).isEmpty }
@@ -75,7 +76,8 @@ struct FeedView: View {
         }
 
         // Dinner is happening right now.
-        if let live = meals.first(where: \.isLive) {
+        // The first one started, matching the Lock Screen and the store.
+        if let live = meals.filter(\.isLive).min(by: { ($0.liveAt ?? .distantFuture) < ($1.liveAt ?? .distantFuture) }) {
             return .live(live)
         }
         // A plan whose day has passed without a photo: "Did you have Chili?"
@@ -86,7 +88,7 @@ struct FeedView: View {
             guard let tonight = meal(on: .now) else { return .log }
             if tonight.isPlan { return .planned(tonight, isToday: true) }
             // Snapped tonight without going live, while everyone's still here.
-            if tonight.liveAt == nil, calendar.component(.hour, from: .now) >= 15,
+            if store.role != .solo, tonight.liveAt == nil, calendar.component(.hour, from: .now) >= 15,
                Date.now.timeIntervalSince(tonight.createdAt ?? .distantPast) < 3 * 3600 {
                 return .goLive(tonight)
             }
@@ -117,6 +119,7 @@ struct FeedView: View {
         let dishes = Suggestions.group(store.summaries(meals: Array(meals), ratings: Array(ratings)))
         let mode = meals.isEmpty ? nil : tonight(starsByMeal: starsByMeal, dishes: dishes)
         let cooks = store.familyNames(from: Array(meals))
+        let bottomMargin: CGFloat = { if case .live? = mode { return 120 } else { return 72 } }()
 
         NavigationStack(path: $router.feedPath) {
             ScrollView {
@@ -129,14 +132,25 @@ struct FeedView: View {
                             LiveDinnerCard(meal: meal, onSnap: { snappingLive = meal }) { ended in
                                 withAnimation {
                                     pendingEnd = ended
-                                    toast = UndoToast(text: "Dinner wrapped up", undo: { pendingEnd = nil },
-                                                      commit: { commitPendingEnd() })
+                                    toast = UndoToast(text: "That's dinner", undo: {
+                                        endTimer?.cancel()
+                                        pendingEnd = nil
+                                    })
+                                    // Its own timer: another toast or a tab switch can't hold it back.
+                                    endTimer?.cancel()
+                                    endTimer = Task {
+                                        try? await Task.sleep(for: .seconds(6))
+                                        guard !Task.isCancelled else { return }
+                                        commitPendingEnd()
+                                    }
                                 }
                             }
                             .padding(.horizontal)
                         }
                     case .goLive(let meal)?:
-                        GoLiveBanner { store.startLive(meal) }
+                        GoLiveBanner {
+                            if store.myName == nil { router.askWhoIAm = true } else { store.startLive(meal) }
+                        }
                             .padding(.horizontal)
                     case .some(let mode):
                         TonightCard(mode: mode, memory: memoryItem, cooks: cooks, streak: streak) { isAdding = true }
@@ -178,7 +192,8 @@ struct FeedView: View {
                 }
                 .padding(.bottom, 24)
             }
-            .contentMargins(.bottom, 72, for: .scrollContent)
+            // Room for the Live card's footer above the floating tab bar.
+            .contentMargins(.bottom, bottomMargin, for: .scrollContent)
             .background(Color(.systemGroupedBackground))
             .overlay { emptyState(filtered: filtered) }
             .overlay(alignment: .bottom) {
@@ -201,7 +216,6 @@ struct FeedView: View {
                     .task(id: toast.id) {
                         try? await Task.sleep(for: .seconds(6))
                         guard !Task.isCancelled else { return }
-                        toast.commit?()
                         withAnimation { self.toast = nil }
                     }
                 }
@@ -270,6 +284,8 @@ struct FeedView: View {
     }
 
     private func commitPendingEnd() {
+        endTimer?.cancel()
+        endTimer = nil
         guard let meal = pendingEnd else { return }
         pendingEnd = nil
         store.endLive(meal)
@@ -366,7 +382,7 @@ struct FeedView: View {
             ContentUnavailableView {
                 Label("No dinners yet", systemImage: "fork.knife")
             } description: {
-                Text("Snap a picture of this Sunday's dinner to start your family's record.")
+                Text("Snap a photo of this Sunday's dinner to start your family's record.")
             } actions: {
                 Button("Add your first dinner") { isAdding = true }
                     .buttonStyle(.borderedProminent)
@@ -405,6 +421,24 @@ struct TonightCard: View {
     @EnvironmentObject private var store: MealStore
     @EnvironmentObject private var router: AppRouter
     @State private var stars = 0
+    /// "We're sitting down" on a phone that hasn't said whose it is.
+    @State private var startAfterNaming: (() -> Void)?
+
+    private var snapButton: some View {
+        Button(action: onAdd) {
+            Label("Snap a photo", systemImage: "camera.fill")
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Dinner is started by a person: ask "Which one are you?" first if needed.
+    private func whenNamed(_ action: @escaping () -> Void) {
+        if store.myName == nil {
+            startAfterNaming = action
+        } else {
+            action()
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -418,29 +452,36 @@ struct TonightCard: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                Button(action: onAdd) {
-                    Label("Snap tonight's dinner", systemImage: "camera.fill")
-                        .frame(maxWidth: .infinity)
+                // With a family, Sunday starts with sitting down together
+                // (Live has its own Snap); alone, it's just the photo.
+                if store.role != .solo {
+                    Button {
+                        whenNamed { Task { try? await store.startLiveTonight() } }
+                    } label: {
+                        Label("We're sitting down", systemImage: "dot.radiowaves.left.and.right")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .accessibilityHint("Lets everyone in the family check in and add photos to tonight's dinner.")
+                    .disabled(!store.isFreshFromFamily)
+                    .overlay {
+                        if !store.isFreshFromFamily { CheckingOverlay() }
+                    }
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                Button {
-                    Task { try? await store.startLiveTonight() }
-                } label: {
-                    Label("We're sitting down", systemImage: "dot.radiowaves.left.and.right")
-                        .frame(maxWidth: .infinity)
+                if store.role == .solo {
+                    snapButton.buttonStyle(.borderedProminent).controlSize(.large)
+                } else {
+                    snapButton.buttonStyle(.bordered).controlSize(.large)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .accessibilityHint("Lets everyone in the family check in and add photos to tonight's dinner.")
-                .disabled(!store.isFreshFromFamily)
-                .overlay {
-                    if !store.isFreshFromFamily { CheckingOverlay() }
+                // Deciding is for the afternoon; by dinnertime it's noise.
+                if Calendar.current.component(.hour, from: .now) < 15 {
+                    Button("Ideas") { router.showIdeas = true }
+                        .font(.subheadline.weight(.medium))
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("ideasButton")
                 }
-                Button("Still deciding? Get an idea") { router.showIdeas = true }
-                    .font(.subheadline.weight(.medium))
-                    .frame(minHeight: 44)
-                    .accessibilityIdentifier("ideasButton")
 
             case .missed:
                 Text("Missed last Sunday?")
@@ -478,7 +519,7 @@ struct TonightCard: View {
                     Button {
                         router.showIdeas = true
                     } label: {
-                        Label("Find an idea", systemImage: "sparkles")
+                        Label("Ideas", systemImage: "sparkles")
                     }
                     .buttonStyle(.bordered)
                     .accessibilityIdentifier("ideasButton")
@@ -501,14 +542,15 @@ struct TonightCard: View {
                 }
                 if isToday {
                     Button(action: onAdd) {
-                        Label("Snap it", systemImage: "camera.fill")
+                        Label("Snap a photo", systemImage: "camera.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     // Sunday Live: the whole family checks in and snaps.
+                    if store.role != .solo {
                     Button {
-                        store.startLive(meal)
+                        whenNamed { store.startLive(meal) }
                     } label: {
                         Label("We're sitting down", systemImage: "dot.radiowaves.left.and.right")
                             .frame(maxWidth: .infinity)
@@ -547,6 +589,15 @@ struct TonightCard: View {
                 .strokeBorder(Color.sundayAccent.opacity(0.35), lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
+        .sheet(isPresented: Binding(get: { startAfterNaming != nil }, set: { if !$0 { startAfterNaming = nil } })) {
+            WhichOneAreYouView { name in
+                let start = startAfterNaming
+                startAfterNaming = nil
+                store.setMyName(name)
+                start?()
+            }
+            .presentationDetents([.medium, .large])
+        }
     }
 
     @ViewBuilder
@@ -573,7 +624,7 @@ struct TonightCard: View {
         Button {
             router.showIdeas = true
         } label: {
-            Text("Other ideas").fixedSize()
+            Text("Ideas").fixedSize()
         }
         .buttonStyle(.bordered)
         .accessibilityIdentifier("ideasButton")
@@ -875,12 +926,12 @@ struct GoLiveBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Everyone still at the table?")
                     .font(.subheadline.weight(.semibold))
-                Text("Go live so they can check in and add their photos.")
+                Text("So everyone can check in and add photos.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Go live", action: action)
+            Button("We're sitting down", action: action)
                 .buttonStyle(.borderedProminent)
         }
         .padding(14)
@@ -893,8 +944,6 @@ struct UndoToast: Identifiable {
     let id = UUID()
     let text: String
     let undo: () -> Void
-    /// Runs when the toast goes away without Undo.
-    var commit: (() -> Void)? = nil
 }
 
 /// Over "We're sitting down" while a phone opened late catches up, so it

@@ -9,6 +9,13 @@ import SwiftUI
 enum SundayBook {
     static let pageSize = CGSize(width: 612, height: 792) // US Letter, points
 
+    /// "41 Sundays", or "43 dinners" once a weekday birthday is in it.
+    static func countLabel(_ dinners: [Meal]) -> String {
+        let allSundays = dinners.allSatisfy { $0.date.map { SundayCalendar.isSunday($0) } ?? true }
+        let noun = allSundays ? (dinners.count == 1 ? "Sunday" : "Sundays") : (dinners.count == 1 ? "dinner" : "dinners")
+        return "\(dinners.count) \(noun)"
+    }
+
     static func years(in meals: [Meal]) -> [Int] {
         Array(Set(meals.filter { !$0.isPlan }.compactMap { $0.date.map { Calendar.current.component(.year, from: $0) } }))
             .sorted(by: >)
@@ -97,7 +104,7 @@ private struct BookCover: View {
             Text(String(year))
                 .font(.system(size: 30, weight: .regular, design: .serif))
                 .foregroundStyle(bookAccent)
-            Text("\(dinners.count) Sunday dinners")
+            Text(SundayBook.countLabel(dinners).capitalized(with: nil))
                 .font(.system(size: 16, design: .serif))
                 .padding(.top, 12)
             if !people.isEmpty {
@@ -249,7 +256,7 @@ struct SundayBookSection: View {
                         Text("The \(String(selected)) Sunday Book")
                             .font(.headline)
                             .keepsake()
-                        Text("\(dinners.count) Sunday\(dinners.count == 1 ? "" : "s"), who cooked, who was at the table, and your recipes in your own words.")
+                        Text("\(SundayBook.countLabel(dinners)), who cooked, who was at the table, and your recipes in your own words.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

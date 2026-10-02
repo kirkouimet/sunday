@@ -97,6 +97,13 @@ struct RootView: View {
                 .tag(AppRouter.Tab.family)
         }
         .minimizingTabBarOnScroll()
+        .onChange(of: store.role) { _, role in
+            // Just joined or started a family: say who this phone is, once.
+            guard role != .solo, store.myName == nil,
+                  !UserDefaults.standard.bool(forKey: "askedMyNameOnJoin") else { return }
+            UserDefaults.standard.set(true, forKey: "askedMyNameOnJoin")
+            router.askWhoIAm = true
+        }
         .sheet(isPresented: $router.askWhoIAm) {
             WhichOneAreYouView { store.setMyName($0) }
                 .presentationDetents([.medium, .large])

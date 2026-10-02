@@ -106,7 +106,7 @@ private struct LiveDinnerLockScreen: View {
                     CheckInButton(mealID: context.attributes.mealID, isCheckedIn: context.state.isMeCheckedIn,
                                   knowsMe: context.state.me != nil)
                     Link(destination: DeepLink.snap) {
-                        Label("Snap", systemImage: "camera.fill")
+                        Label("Snap a photo", systemImage: "camera.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white)
                     }

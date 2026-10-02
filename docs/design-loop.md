@@ -10,6 +10,7 @@ Canvas with screenshots and pinned critiques: claude.ai/design ("Sunday Design R
 | Loop | Maturity | 🚀 | 🧱 | 🎨 | Biggest idea |
 |---|---|---|---|---|---|
 | 0 (baseline) | – | 3 | 6 | 8 | "Tonight" moment; cooks as people; Ideas as a decision tool |
+| 9 | 8/10 | 0 | 2 | 6 | **The finish pass**: "ready to ship once it is trimmed". Concept count about 22 → about 14 (Ideas had 4 labels, Snap 6, the Live ending 3) · 5 bugs (identity leaks, two live dinners, unnamed start) · 5 ✂️. Critic, looking back: "the curve stopped producing leaps at round 6… every round since has rightly been subtraction and truth-telling" |
 | 8 | 8/10 | 0 | 2 | 2 | **A four-phone rehearsal, walked through the code** (owner, offline phone, unnamed phone, force-quit phone at large text): "a different class of bug from the screenshot reviews… none are layout problems. They are about time and identity" · 7 bugs · 2 ✂️ |
 | 7 | 8/10 | 0 | 3 | 2 | **Is Live multiplayer now? "Mostly yes, at the data layer"**, but "multiplayer for the person who started dinner; everyone else gets eventually consistent" · 7 bugs at the edges where a 2nd/3rd phone joins · 1 ✂️. Critic: "flat part of the curve, and that's the right place to be… if a loop proposes a new screen, the answer should be no" |
 | 6 | 8/10 | 0 new (Live judged "partly a leap") | 6 | 2 | **Was loop 6 a leap? Partly**: "biggest step since loop 3… the app now has a present tense", but "single-player plumbing underneath" · 6 bugs, all in the new multiplayer core. Critic: "one step-change left: make Live actually multiplayer; then hardening, no new concepts" |
@@ -147,3 +148,16 @@ Round 8 changed method: with one simulator and no second family, the critic **re
 - ✂️ *Not here* on other people only for whoever started dinner or is cooking (no stray long-press removes Grandma); no "dinner is on" banner while you're looking at the Live card.
 - 🎨 Large text: status, faces and who's missing move under the photo, where they're readable. *Tell the table* is addressed to who's missing ("Grandma June, Sam, dinner's on: Chili…").
 - Not fixable from here, and said plainly: a force-quit phone gets no silent push, so without a server *Tell the table* is the only way to reach Grandma. The critic also wants a real two-device check of the late-phone and Undo beats.
+
+## Loop 9 → 10: one name per idea (implemented)
+
+Critique (8/10): "Sunday is ready to ship once it is trimmed. Loop 10 should not add anything." It counted about 22 nouns and verbs a grandparent meets today and asked for about 14.
+
+- ✂️ **One word each.** Snap → *Snap a photo* (it had six wordings, across the app, the Lock Screen and the reminder). Ideas → *Ideas* (it had four). Live starts with *We're sitting down* and ends with *That's dinner* ("Go live", "Wrap up" and "wrapped up" are gone). The guest button says *tell a story*, because it records a story, not the dish's recipe.
+- ✂️ **No Live for a family of one**: no "I'm here" for yourself, no "Tell the table" with nobody at it.
+- ✂️ *Sundays with* is gone (people pages do it). The *Sort into ingredients & steps* button is gone too: recipes sort themselves after transcription, with *Back to what was said* as the only control. Dead `resumeLive` removed.
+- 🐛 **Family names everywhere**: the cook picker, the Family row and "Joined: Mom's family" use Member names; unmapped iCloud accounts are left out by default.
+- 🐛 **One live dinner**: a second phone's unplanned *We're sitting down* joins the first, and every path (the card, the Lock Screen, the store) picks the earliest start.
+- 🐛 **Dinner is started by a person**: an unnamed phone asks *Which one are you?* first (otherwise everyone could end it). New owners and joiners are asked once right after the family forms. The picker marks names already "On another phone".
+- 🐛 **"That's dinner" can't be held back**: the 6-second commit has its own timer, so another toast or a tab switch can't hold it. A participant's "checking with the family" waits for the shared store's import specifically.
+- 🎨 With a family, Sunday's card leads with *We're sitting down* (Snap is secondary, since Live has its own); *Ideas* disappears after 3 pm. "Sundays logged" says "dinners" once a Friday birthday is in it (and so does the Book). VoiceOver gets the face actions (*That's not me*, *Not here*); the Live footer clears the tab bar at large text.

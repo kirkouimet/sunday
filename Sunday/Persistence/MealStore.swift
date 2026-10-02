@@ -311,6 +311,18 @@ final class MealStore: ObservableObject {
 
     // MARK: Members (iCloud account → family name)
 
+    /// "Mom's family" for whoever owns the share, in family words.
+    var ownerFamilyName: String? {
+        guard let owner = share?.owner else { return nil }
+        return memberName(for: owner)
+    }
+
+    /// Names other phones have already claimed, so two phones aren't both "Mom".
+    var namesClaimedElsewhere: Set<String> {
+        let mine = share?.currentUserParticipant.flatMap { participantKey($0) }
+        return Set(members.filter { $0.participantID != mine }.compactMap { $0.name?.lowercased() })
+    }
+
     /// The share's owner reads their own record name as a placeholder, so
     /// the owner is keyed by role instead.
     private func participantKey(_ participant: CKShare.Participant) -> String? {
@@ -358,8 +370,9 @@ final class MealStore: ObservableObject {
     func liveMeal() -> Meal? {
         let request = NSFetchRequest<Meal>(entityName: "Meal")
         request.predicate = NSPredicate(format: "liveAt != nil AND liveEndedAt == nil")
+        // The first one started, if two phones somehow both did.
         return ((try? context.fetch(request)) ?? []).filter(\.isLive)
-            .max { ($0.liveAt ?? .distantPast) < ($1.liveAt ?? .distantPast) }
+            .min { ($0.liveAt ?? .distantFuture) < ($1.liveAt ?? .distantFuture) }
     }
 
     /// "We're sitting down": the dinner goes live for the whole family.
@@ -382,6 +395,11 @@ final class MealStore: ObservableObject {
 
     /// Live without a plan: any Sunday evening, name it later (or never).
     func startLiveTonight() async throws {
+        // Someone beat us to it: join theirs instead of starting a second.
+        if let live = liveMeal() {
+            checkIn(live)
+            return
+        }
         var draft = MealDraft()
         draft.date = .now
         draft.cook = ""
@@ -508,13 +526,6 @@ final class MealStore: ObservableObject {
         LiveDinners.sync(store: self)
     }
 
-    /// Undo for "That's dinner", while the toast is up.
-    func resumeLive(_ meal: Meal) {
-        guard !meal.isGone else { return }
-        meal.liveEndedAt = nil
-        saveQuietly()
-        LiveDinners.sync(store: self)
-    }
 
     /// Check-ins tapped on a Live Activity or notification. Waits for a
     /// name: the app asks "Which one are you?" when one is queued.
@@ -669,10 +680,10 @@ final class MealStore: ObservableObject {
     // MARK: Family sharing
 
     /// Names of people in the family share (owner and accepted members).
-    /// The family's own names when a member has said ("Dad"); otherwise the
-    /// iCloud name, unless `mappedOnly` (then unknown accounts are left out,
-    /// so "Kirk" never shows up next to "Dad").
-    func participantNames(mappedOnly: Bool = false) -> [String] {
+    /// The family's own names ("Dad"), from Member records. Accounts that
+    /// haven't said who they are stay out by default, so "Kirk" never shows
+    /// up next to "Dad"; `mappedOnly: false` falls back to the iCloud name.
+    func participantNames(mappedOnly: Bool = true) -> [String] {
         (share?.participants ?? []).compactMap { participant -> String? in
             guard participant.role == .owner || participant.acceptanceStatus == .accepted else { return nil }
             if let mapped = memberName(for: participant) { return mapped }
@@ -686,7 +697,7 @@ final class MealStore: ObservableObject {
 
     /// Everyone we know of at this family's table: share members, cooks and
     /// past guests, most-seen first.
-    func familyNames(from meals: [Meal], mappedOnly: Bool = false) -> [String] {
+    func familyNames(from meals: [Meal], mappedOnly: Bool = true) -> [String] {
         var counts: [String: (name: String, count: Int)] = [:]
         for name in participantNames(mappedOnly: mappedOnly) { counts[name.lowercased(), default: (name, 0)].count += 1000 }
         for meal in meals {
@@ -898,7 +909,9 @@ final class MealStore: ObservableObject {
                         self.startSharedImportFallback()
                     }
                 }
-                if !self.isFreshFromFamily {
+                // A participant's family lives in the shared store: wait for that one.
+                let familyStore = self.role == .participant ? self.persistence.sharedStore?.identifier : nil
+                if !self.isFreshFromFamily, familyStore == nil || storeIdentifier == familyStore {
                     self.isFreshFromFamily = true
                     self.freshnessTask?.cancel()
                 }

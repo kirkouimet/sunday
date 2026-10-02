@@ -29,9 +29,9 @@ enum Reminders {
         let content = UNMutableNotificationContent()
         content.title = "Sunday dinner 🍽️"
         if let memory = memoryLine(store: store) {
-            content.body = "Snap a pic before everyone digs in. \(memory)"
+            content.body = "Snap a photo before everyone digs in. \(memory)"
         } else {
-            content.body = "Snap a pic before everyone digs in."
+            content.body = "Snap a photo before everyone digs in."
         }
         content.sound = .default
 

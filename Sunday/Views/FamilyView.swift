@@ -35,9 +35,6 @@ struct FamilyView: View {
                 if store.role == .solo {
                     familySection
                 }
-                if !meals.isEmpty {
-                    funStats
-                }
                 accountWarning
                 if store.role != .solo {
                     familySection
@@ -55,6 +52,8 @@ struct FamilyView: View {
             .sheet(item: $sharingShare) { share in
                 CloudSharingView(share: share, container: store.persistence.ckContainer) {
                     store.refreshShare()
+                    // Now there's a family: say who this phone is, once.
+                    if store.role != .solo, store.myName == nil { isChoosingMe = true }
                 }
                 .ignoresSafeArea()
             }
@@ -81,9 +80,10 @@ struct FamilyView: View {
                     .foregroundStyle(Color.sundayAccent)
                     .contentTransition(.numericText())
                 // "Together" only once there's someone to be together with.
-                Text(store.role == .solo
-                     ? (history.count == 1 ? "Sunday logged" : "Sundays logged")
-                     : (history.count == 1 ? "dinner together" : "dinners together"))
+                // "Sundays" only while it's true (a Friday birthday counts too).
+                let allSundays = history.allSatisfy { $0.date.map { SundayCalendar.isSunday($0) } ?? true }
+                let noun = allSundays ? (history.count == 1 ? "Sunday" : "Sundays") : (history.count == 1 ? "dinner" : "dinners")
+                Text(store.role == .solo ? "\(noun) logged" : "\(noun) together")
                     .font(.headline)
                 if let first = history.last?.date {
                     Text("Since \(first.formatted(.dateTime.month(.wide).year()))")
@@ -147,38 +147,6 @@ struct FamilyView: View {
         .accessibilityLabel("Family: \(members.joined(separator: ", "))")
     }
 
-    /// Who's been at the table most. Only when it says something: if
-    /// everyone's been at every dinner, the big number already said it.
-    @ViewBuilder
-    private var funStats: some View {
-        let attendance = Attendance.counts(in: history.compactMap { m -> Attendance.Dinner? in
-            guard let id = m.id, let date = m.date else { return nil }
-            return Attendance.Dinner(id: id, date: date, people: m.tablePeople)
-        })
-        if attendance.count > 1, Set(attendance.map(\.count)).count > 1 {
-            Section {
-                NavigationLink {
-                    SundaysWithView(counts: attendance)
-                } label: {
-                    HStack(spacing: 10) {
-                        HStack(spacing: -6) {
-                            ForEach(attendance.prefix(4), id: \.name) { person in
-                                CookAvatar(name: person.name, size: 26)
-                                    .overlay(Circle().strokeBorder(Color(.secondarySystemGroupedBackground), lineWidth: 2))
-                            }
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Sundays with").font(.subheadline.weight(.semibold))
-                            Text(attendance.prefix(3).map { "\($0.name) \($0.count)" }.joined(separator: " · "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     @ViewBuilder
     private var accountWarning: some View {
         if store.persistence.isCloudBacked, store.accountStatus == .noAccount || store.accountStatus == .restricted {
@@ -199,7 +167,7 @@ struct FamilyView: View {
             case .owner:
                 LabeledContent("Family", value: familyMembersSummary)
             case .participant:
-                LabeledContent("Joined", value: ownerName.map { "\($0)'s family" } ?? "Family")
+                LabeledContent("Joined", value: store.ownerFamilyName.map { "\($0)'s family" } ?? "Your family")
             }
 
             if store.role == .solo, store.persistence.isCloudBacked, !store.hasCompletedFirstImport {
@@ -306,11 +274,6 @@ struct FamilyView: View {
         }
     }
 
-    private var ownerName: String? {
-        guard let components = store.share?.owner.userIdentity.nameComponents else { return nil }
-        let name = components.formatted(.name(style: .short))
-        return name.isEmpty ? nil : name
-    }
 
     private func openSharing() {
         isPreparingShare = true
@@ -327,26 +290,4 @@ struct FamilyView: View {
 
 extension CKShare: @retroactive Identifiable {
     public var id: CKRecord.ID { recordID }
-}
-
-/// Everyone who's been at the table, and how many Sundays each.
-struct SundaysWithView: View {
-    let counts: [(name: String, count: Int)]
-
-    var body: some View {
-        List(counts, id: \.name) { person in
-            NavigationLink(value: PersonRoute(name: person.name)) {
-            HStack(spacing: 12) {
-                CookAvatar(name: person.name, size: 36)
-                Text(person.name).font(.body.weight(.medium))
-                Spacer()
-                Text("\(person.count) Sunday\(person.count == 1 ? "" : "s")")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            .accessibilityElement(children: .combine)
-            }
-        }
-        .navigationTitle("Sundays with")
-    }
 }

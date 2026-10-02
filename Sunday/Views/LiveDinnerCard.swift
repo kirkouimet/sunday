@@ -122,7 +122,7 @@ struct LiveDinnerCard: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .confirmationDialog("Wrap up dinner for everyone?", isPresented: $isConfirmingEnd, titleVisibility: .visible) {
+        .confirmationDialog("That's dinner for everyone?", isPresented: $isConfirmingEnd, titleVisibility: .visible) {
             Button("That's dinner") {
                 // Sent to the family only once the Undo toast has gone.
                 onEnded(meal)
@@ -210,6 +210,17 @@ struct LiveDinnerCard: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(person), at the table")
+                        // The long-press menu, for VoiceOver too.
+                        .accessibilityActions {
+                            if isMe(person) {
+                                Button("That's not me") {
+                                    store.clearMyName()
+                                    isChoosingMe = true
+                                }
+                            } else if store.canEndLive(meal) {
+                                Button("Not here") { store.removeFromTable(person, meal: meal) }
+                            }
+                        }
                         .contextMenu {
                             if isMe(person) {
                                 Button("That's not me", systemImage: "person.crop.circle.badge.questionmark") {
@@ -264,7 +275,7 @@ struct LiveDinnerCard: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 Button(action: snap) {
-                    Label("Snap", systemImage: "camera.fill")
+                    Label("Snap a photo", systemImage: "camera.fill")
                         .labelStyle(.iconOnly)
                         .frame(minWidth: 28)
                 }
@@ -315,13 +326,23 @@ struct WhichOneAreYouView: View {
         NavigationStack {
             List {
                 Section {
-                    ForEach(store.familyNames(from: Array(meals), mappedOnly: true).prefix(12), id: \.self) { name in
+                    // Names another phone already is go last, marked, so two
+                    // phones don't both become "Mom".
+                    let claimed = store.namesClaimedElsewhere
+                    let all = Array(store.familyNames(from: Array(meals)).prefix(12))
+                    let names = all.filter { !claimed.contains($0.lowercased()) } + all.filter { claimed.contains($0.lowercased()) }
+                    ForEach(names, id: \.self) { name in
                         Button {
                             choose(name)
                         } label: {
                             HStack(spacing: 12) {
                                 CookAvatar(name: name, size: 36)
-                                Text(name).foregroundStyle(.primary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(name).foregroundStyle(.primary)
+                                    if claimed.contains(name.lowercased()) {
+                                        Text("On another phone").font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
                             }
                         }
                     }

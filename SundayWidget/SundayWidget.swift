@@ -251,7 +251,7 @@ struct SundayWidgetView: View {
             Image(systemName: "fork.knife")
                 .font(.title2)
                 .foregroundStyle(accent)
-            Text("Snap this Sunday's dinner")
+            Text("Snap a photo of this Sunday's dinner")
                 .font(.footnote.weight(.medium))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white)
