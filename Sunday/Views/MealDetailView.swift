@@ -18,6 +18,8 @@ struct MealDetailView: View {
     @State private var stars = 0
     @State private var isEditing = false
     @State private var isConfirmingDelete = false
+    @State private var isWritingRecipe = false
+    @State private var recipeText = ""
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private var dish: Dish? {
@@ -42,6 +44,36 @@ struct MealDetailView: View {
         .toolbar { if !meal.isGone { toolbarContent } }
         .sheet(isPresented: $isEditing) {
             MealEditorView(meal: meal)
+        }
+        .sheet(isPresented: $isWritingRecipe) {
+            NavigationStack {
+                TextEditor(text: $recipeText)
+                    .font(.body)
+                    .padding(.horizontal)
+                    .overlay(alignment: .topLeading) {
+                        if recipeText.isEmpty {
+                            Text("Ingredients, then steps. However Grandma would say it.")
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 22)
+                                .padding(.top, 8)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .navigationTitle("How we make \(meal.displayName)")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { isWritingRecipe = false }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Save") {
+                                store.setRecipe(recipeText, for: recipeSource ?? meal)
+                                isWritingRecipe = false
+                            }
+                            .bold()
+                        }
+                    }
+            }
         }
         .confirmationDialog("Delete this dinner for everyone in the family?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
             Button("Delete dinner", role: .destructive) {
@@ -71,8 +103,8 @@ struct MealDetailView: View {
                         .accessibilityAddTraits(.isHeader)
                     // One line of facts: when · who · season or holiday.
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 8) { metaItems }
-                        VStack(alignment: .leading, spacing: 6) { metaItems }
+                        HStack(spacing: 8) { metaItems(separated: true) }
+                        VStack(alignment: .leading, spacing: 6) { metaItems(separated: false) }
                     }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -97,6 +129,10 @@ struct MealDetailView: View {
                 if let notes = meal.notes, !notes.isEmpty {
                     notesCard(notes)
                 }
+
+                atTheTable
+
+                recipeCard
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Your stars")
@@ -126,14 +162,109 @@ struct MealDetailView: View {
         .ignoresSafeArea(edges: .top)
     }
 
+    /// Faces of who was there, and the moment it marks ("First Sunday with June").
     @ViewBuilder
-    private var metaItems: some View {
+    private var atTheTable: some View {
+        let people = Attendance.decode(meal.attendees)
+        if !people.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("At the table")
+                    .font(.headline)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(people, id: \.self) { person in
+                            VStack(spacing: 4) {
+                                CookAvatar(name: person, size: 40)
+                                Text(person).font(.caption).lineLimit(1)
+                            }
+                        }
+                    }
+                }
+                if let id = meal.id, let moment = Attendance.moment(for: id, in: allMeals.filter { !$0.isPlan }.compactMap { m -> Attendance.Dinner? in
+                    guard let mid = m.id, let date = m.date else { return nil }
+                    return Attendance.Dinner(id: mid, date: date, people: Attendance.decode(m.attendees))
+                }) {
+                    Label(moment, systemImage: "sparkles")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.sundayAccent)
+                }
+            }
+            .padding(.horizontal)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// The family's own way of making it: an heirloom, written once,
+    /// shown on every time we've had this.
+    @ViewBuilder
+    private var recipeCard: some View {
+        let familyRecipe = recipeSource
+        if let familyRecipe, let text = familyRecipe.recipe {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("How we make it")
+                        .font(.title3.weight(.semibold))
+                        .keepsake()
+                    Spacer()
+                    if store.canEdit(familyRecipe) {
+                        Button("Edit") {
+                            recipeText = text
+                            isWritingRecipe = true
+                        }
+                        .font(.subheadline)
+                    }
+                }
+                Text(text)
+                    .font(.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let cook = familyRecipe.cook, !cook.isEmpty {
+                    Text("— \(cook)'s way")
+                        .font(.subheadline)
+                        .italic()
+                        .keepsake()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal)
+        } else if let dish, dish.timesEaten >= 2, store.canEdit(meal) {
+            Button {
+                recipeText = ""
+                isWritingRecipe = true
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("How do you make it?", systemImage: "book.closed")
+                        .font(.headline)
+                    Text("You've had this \(dish.timesEaten) times. Write it down once and it's here for good.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+        }
+    }
+
+    /// The newest dinner of this dish that has a recipe written down.
+    private var recipeSource: Meal? {
+        let key = MealName.normalize(meal.displayName)
+        if meal.recipe?.isEmpty == false { return meal }
+        return allMeals.first { MealName.normalize($0.displayName) == key && $0.recipe?.isEmpty == false }
+    }
+
+    @ViewBuilder
+    private func metaItems(separated: Bool) -> some View {
         Text((meal.date ?? .now).dinnerFormatted)
         if let cook = meal.cook, !cook.isEmpty {
-            Text("·").accessibilityHidden(true)
+            if separated { Text("·").accessibilityHidden(true) }
             CookLabel(name: cook, size: 20)
         }
-        Text("·").accessibilityHidden(true)
+        if separated { Text("·").accessibilityHidden(true) }
         if let holiday = meal.holiday {
             Text(holiday.label).accessibilityLabel(holiday.name)
         } else {

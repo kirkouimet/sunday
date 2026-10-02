@@ -19,10 +19,10 @@ struct FeedView: View {
 
     private var isFiltering: Bool { seasonFilter != nil || !MealName.normalize(searchText).isEmpty }
 
-    /// A dinner with no photo dated today or later is a plan, not history.
-    static func isPlanned(_ meal: Meal) -> Bool {
-        meal.sortedPhotos.isEmpty && (meal.date ?? .distantPast) >= Calendar.current.startOfDay(for: .now)
-    }
+    /// Planned dinners aren't history until someone snaps or confirms them.
+    static func isPlanned(_ meal: Meal) -> Bool { meal.isPlan }
+
+    @State private var recentlyRated: NSManagedObjectID?
 
     private var filteredMeals: [Meal] {
         let query = MealName.normalize(searchText)
@@ -44,7 +44,7 @@ struct FeedView: View {
     }
 
     private var streak: Int {
-        SundayCalendar.streak(mealDates: meals.compactMap(\.date))
+        SundayCalendar.streak(mealDates: meals.filter { !$0.isPlan }.compactMap(\.date))
     }
 
     private func memory(starsByMeal: [UUID: Int]) -> MealSummary? {
@@ -55,36 +55,35 @@ struct FeedView: View {
         return Suggestions(meals: summaries, hemisphere: .current).thisTimeInPastYears(windowDays: 7).first
     }
 
-    /// What this week asks of you: plan it, snap it, rate it, remember it.
+    /// What this week asks of you, in order: follow up on a plan that came
+    /// and went, show the plan, celebrate a rating you just gave, or invite
+    /// the next Sunday. Rating itself lives on the dinner's own card.
     private func tonight(starsByMeal: [UUID: Int], dishes: [Dish]) -> TonightCard.Mode? {
         guard !isFiltering else { return nil }
         let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: .now)
         func meal(on day: Date) -> Meal? {
             meals.first { $0.date.map { calendar.isDate($0, inSameDayAs: day) } ?? false }
         }
-        func rated(_ meal: Meal) -> Int { meal.id.flatMap { starsByMeal[$0] } ?? 0 }
 
+        // You just rated something: the table remembers, whatever the weekday.
+        if let recentlyRated, let rated = meals.first(where: { $0.objectID == recentlyRated }),
+           let line = insight(for: rated, dishes: dishes) {
+            return .remembered(rated, line)
+        }
+        // A plan whose day has passed without a photo: "Did you have Chili?"
+        if let stale = meals.first(where: { $0.isPlan && ($0.date ?? .distantFuture) < startOfToday }) {
+            return .followUp(stale)
+        }
         if SundayCalendar.isSunday(.now) {
             guard let tonight = meal(on: .now) else { return .log }
-            if tonight.sortedPhotos.isEmpty { return .planned(tonight, isToday: true) }
-            if rated(tonight) == 0 { return .rate(tonight, isToday: true) }
-            return insight(for: tonight, dishes: dishes).map { TonightCard.Mode.remembered(tonight, $0) }
+            if tonight.isPlan { return .planned(tonight, isToday: true) }
+            return nil
         }
-
-        let lastSunday = SundayCalendar.mostRecentSunday(onOrBefore: .now)
-        let last = meal(on: lastSunday)
-        if let last, !last.sortedPhotos.isEmpty {
-            if rated(last) == 0 { return .rate(last, isToday: false) }
-            // The morning after: a private line about how it compared.
-            if calendar.dateComponents([.day], from: lastSunday, to: .now).day ?? 9 <= 1,
-               let line = insight(for: last, dishes: dishes) {
-                return .remembered(last, line)
-            }
-        }
-        if let plan = meal(on: SundayCalendar.upcomingSunday(onOrAfter: .now)), plan.sortedPhotos.isEmpty {
+        if let plan = meal(on: SundayCalendar.upcomingSunday(onOrAfter: .now)), plan.isPlan {
             return .planned(plan, isToday: false)
         }
-        return last == nil ? .missed : .plan
+        return meal(on: SundayCalendar.mostRecentSunday(onOrBefore: .now)) == nil ? .missed : .plan
     }
 
     private func insight(for meal: Meal, dishes: [Dish]) -> String? {
@@ -103,7 +102,7 @@ struct FeedView: View {
         let rest = featured == nil ? filtered : Array(filtered.dropFirst())
         let dishes = Suggestions.group(store.summaries(meals: Array(meals), ratings: Array(ratings)))
         let mode = meals.isEmpty ? nil : tonight(starsByMeal: starsByMeal, dishes: dishes)
-        let cooks = Self.cooks(in: Array(meals))
+        let cooks = store.familyNames(from: Array(meals))
 
         NavigationStack(path: $router.feedPath) {
             ScrollView {
@@ -115,13 +114,14 @@ struct FeedView: View {
                             .padding(.horizontal)
                     }
                     if let mode {
-                        TonightCard(mode: mode, memory: memoryItem, cooks: cooks) { isAdding = true }
+                        TonightCard(mode: mode, memory: memoryItem, cooks: cooks,
+                                    onDismissMemory: { withAnimation { recentlyRated = nil } }) { isAdding = true }
                             .padding(.horizontal)
                     }
 
                     if let featured {
                         card(for: featured, stars: featured.id.flatMap { starsByMeal[$0] } ?? 0,
-                             showsRatePrompt: !mode.isRating(featured), showsCook: cooks.count > 1)
+                             showsCook: cooks.count > 1)
                             .padding(.horizontal)
                     }
 
@@ -177,9 +177,11 @@ struct FeedView: View {
         }
     }
 
-    private func card(for meal: Meal, stars: Int, showsRatePrompt: Bool, showsCook: Bool) -> some View {
-        MealCard(meal: meal, stars: stars, showsRatePrompt: showsRatePrompt, showsCook: showsCook)
-            .contextMenu { contextMenu(for: meal) }
+    private func card(for meal: Meal, stars: Int, showsCook: Bool) -> some View {
+        MealCard(meal: meal, stars: stars, showsCook: showsCook) {
+            withAnimation { recentlyRated = meal.objectID }
+        }
+        .contextMenu { contextMenu(for: meal) }
     }
 
     private func compactCard(for meal: Meal, stars: Int, showsCook: Bool) -> some View {
@@ -275,13 +277,14 @@ struct TonightCard: View {
         case missed
         case plan
         case planned(Meal, isToday: Bool)
-        case rate(Meal, isToday: Bool)
+        case followUp(Meal)
         case remembered(Meal, String)
     }
 
     let mode: Mode
     let memory: MealSummary?
     let cooks: [String]
+    var onDismissMemory: () -> Void = {}
     var onAdd: () -> Void
 
     @EnvironmentObject private var store: MealStore
@@ -351,30 +354,17 @@ struct TonightCard: View {
                     .controlSize(.large)
                 }
 
-            case .rate(let meal, let isToday):
-                HStack(spacing: 12) {
-                    PhotoThumbnail(photo: meal.sortedPhotos.first)
-                        .frame(width: 56, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(isToday ? "How was tonight's dinner?" : "How was Sunday's dinner?")
-                            .font(.headline)
-                        Text(meal.displayName)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                StarRatingView(stars: Binding(
-                    get: { stars },
-                    set: {
-                        stars = $0
-                        store.setRating($0, for: meal)
-                    }
-                ), size: 26)
-                Label("Only you see your stars.", systemImage: "lock.fill")
-                    .font(.caption)
+            case .followUp(let meal):
+                Text("Did you have \(meal.displayName)?")
+                    .font(.title3.bold())
+                    .keepsake()
+                Text("It was the plan for \((meal.date ?? .now).formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { followUpButtons(meal) }
+                    VStack(alignment: .leading, spacing: 8) { followUpButtons(meal) }
+                }
 
             case .remembered(let meal, let line):
                 HStack(alignment: .top, spacing: 12) {
@@ -390,6 +380,15 @@ struct TonightCard: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: 0)
+                    Button(action: onDismissMemory) {
+                        Image(systemName: "xmark")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss")
                 }
             }
         }
@@ -401,6 +400,19 @@ struct TonightCard: View {
                 .strokeBorder(Color.sundayAccent.opacity(0.35), lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func followUpButtons(_ meal: Meal) -> some View {
+        Button(action: onAdd) {
+            Label("Add the photo", systemImage: "photo.on.rectangle")
+        }
+        .buttonStyle(.borderedProminent)
+        Button("Yes, no photo") { store.confirmPlan(meal, eaten: true) }
+            .buttonStyle(.bordered)
+        Button("We didn't") { store.confirmPlan(meal, eaten: false) }
+            .buttonStyle(.bordered)
+            .tint(.secondary)
     }
 
     /// "Who's cooking?" Tap a person; it syncs to the family right away.
@@ -436,20 +448,16 @@ struct TonightCard: View {
     }
 }
 
-extension Optional where Wrapped == TonightCard.Mode {
-    /// Whether the Tonight card is already asking you to rate this meal.
-    func isRating(_ meal: Meal) -> Bool {
-        if case .rate(let rated, _) = self { return rated.objectID == meal.objectID }
-        return false
-    }
-}
-
 /// The latest dinner, big.
 struct MealCard: View {
     @ObservedObject var meal: Meal
     let stars: Int
-    var showsRatePrompt = true
     var showsCook = true
+    /// Called after you rate from the card, so the feed can show the
+    /// private "table remembers" line.
+    var onRated: () -> Void = {}
+
+    @EnvironmentObject private var store: MealStore
 
     private var isRecent: Bool {
         guard let date = meal.date else { return false }
@@ -457,6 +465,37 @@ struct MealCard: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            link
+            if stars == 0, isRecent {
+                Divider().padding(.horizontal, 16)
+                HStack {
+                    Text("How was it?")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    StarRatingView(stars: Binding(
+                        get: { stars },
+                        set: {
+                            store.setRating($0, for: meal)
+                            if $0 > 0 { onRated() }
+                        }
+                    ), size: 22)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+            }
+        }
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(.separator).opacity(0.5), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+    }
+
+    private var link: some View {
         NavigationLink(value: meal.objectID) {
             VStack(alignment: .leading, spacing: 0) {
                 PhotoThumbnail(photo: meal.sortedPhotos.first)
@@ -498,17 +537,10 @@ struct MealCard: View {
                 }
                 .padding(16)
             }
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Color(.separator).opacity(0.5), lineWidth: 0.5)
-            )
-            .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("mealCard")
+        .accessibilityIdentifier("heroCard")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(mealAccessibilityText(meal))
         .accessibilityValue(stars > 0 ? "Your rating, \(starsDescription(Double(stars)))" : "Not rated")
@@ -530,8 +562,6 @@ struct MealCard: View {
     private var rating: some View {
         if stars > 0 {
             CompactStars(stars: Double(stars))
-        } else if isRecent, showsRatePrompt {
-            RatePrompt()
         }
     }
 }
@@ -548,15 +578,6 @@ struct CompactMealCard: View {
                 PhotoThumbnail(photo: meal.sortedPhotos.first)
                     .aspectRatio(1, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(alignment: .topLeading) {
-                        if let holiday = meal.holiday {
-                            Text(holiday.emoji)
-                                .font(.caption)
-                                .padding(5)
-                                .background(.thinMaterial, in: Circle())
-                                .padding(6)
-                        }
-                    }
                     .accessibilityHidden(true)
                 Text(meal.displayName)
                     .font(.headline)

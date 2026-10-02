@@ -27,13 +27,27 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
     public var recentDates: [Date]
     public var totalDinners: Int
     public var generatedAt: Date
+    /// This Sunday's plan ("Chili"), and who's cooking it, for the Lock Screen.
+    public var plan: Item?
+    public var planCook: String?
 
-    public init(latest: Item?, memories: [Item], recentDates: [Date], totalDinners: Int, generatedAt: Date = .now) {
+    public init(latest: Item?, memories: [Item], recentDates: [Date], totalDinners: Int,
+                generatedAt: Date = .now, plan: Item? = nil, planCook: String? = nil) {
         self.latest = latest
         self.memories = memories
         self.recentDates = recentDates
         self.totalDinners = totalDinners
         self.generatedAt = generatedAt
+        self.plan = plan
+        self.planCook = planCook
+    }
+
+    /// "Tonight: Chili · Dad's cooking" / "Sunday: Chili", or nil once it's past.
+    public func planLine(on day: Date, calendar: Calendar = .current) -> String? {
+        guard let plan, calendar.startOfDay(for: plan.date) >= calendar.startOfDay(for: day) else { return nil }
+        let when = calendar.isDate(plan.date, inSameDayAs: day) ? "Tonight" : "Sunday"
+        let cook = planCook.map { " · \($0)'s cooking" } ?? ""
+        return "\(when): \(plan.title)\(cook)"
     }
 
     public static let empty = WidgetSnapshot(latest: nil, memories: [], recentDates: [], totalDinners: 0,

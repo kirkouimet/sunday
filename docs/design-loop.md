@@ -10,6 +10,7 @@ Canvas with screenshots and pinned critiques: claude.ai/design ("Sunday Design R
 | Loop | Maturity | 🚀 | 🧱 | 🎨 | Biggest idea |
 |---|---|---|---|---|---|
 | 0 (baseline) | – | 3 | 6 | 8 | "Tonight" moment; cooks as people; Ideas as a decision tool |
+| 2 | 7/10 | 3 | 4 | 2 | Who was at the table (attendance); Sunday on the Lock Screen; heirloom recipe card · 5 bugs (mostly wiring of round-1 behaviors) |
 | 1 | 6/10 | 2 (+2 public) | 4 (+2 public) | 4 (+1 public) | "The table remembers" (private insight); Sunday as a ritual (plan the cook ahead) · 3 bugs |
 
 ## Loop 0 → 1 (implemented)
@@ -39,3 +40,16 @@ Critique: "reads as a keepsake now, but still behaves like a logging tool — on
 - Public layer (design only): Star → **Save**; publish = fresh copy without family notes/faces; consented credits; tip after cooking.
 
 Observation: round 1 produced the first *behavioral* leaps (the app talks back; the ritual starts before dinner), where round 0's leaps were about presence and identity.
+
+## Loop 2 → 3 (implemented)
+
+Critique: "the ritual loop exists, but its state machine hides its own best moments, and the family still isn't present." **Novelty check:** "diminishing returns on the screens themselves… genuinely new ideas are in a different category: new data and new places for the app to appear."
+
+- 🚀 **Who was at the table**: one-tap faces in the editor (+ guests); Detail shows *At the table* with moments ("First Sunday with Grandma June", "Grandma's 25th Sunday"); Family gets *Sundays with* (Attendance in SundayKit, tested).
+- 🚀 **Sunday leaves the app**: Lock Screen widgets (rectangular + inline) show "Tonight: Chili · Dad's cooking" from the plan, else a memory.
+- 🚀 **Heirloom recipe**: after the 2nd time, "How do you make it?"; *How we make it — Mom's way* appears on every dinner of that dish (seed for the public layer).
+- 🐛 State machine rebuilt: rating moved onto the hero card ("How was it?"); the Tonight card is only what's next — follow-up, plan, *remembered* (any weekday, dismissible), log, missed.
+- 🐛 Plans are explicit (`isPlan`), never history: "Did you have Chili?" → *Add the photo / Yes, no photo / We didn't*; excluded from streak, counts, ideas, widget.
+- 🧱 New-dinner form collapses until "already posted?" is answered; Save can't duplicate.
+- 🐛 Large-text meta without orphan separators; capture harness taps a dedicated hero ID.
+- 🎨 Ideas scrim; holiday emoji off grid tiles; "Sundays logged" for a family of one; cook picker includes share participants.

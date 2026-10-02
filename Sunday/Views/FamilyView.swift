@@ -19,6 +19,9 @@ struct FamilyView: View {
     @State private var isPreparingShare = false
     @State private var shareError: String?
 
+    /// Dinners that happened (plans don't count until they're confirmed).
+    private var history: [Meal] { meals.filter { !$0.isPlan } }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -68,16 +71,19 @@ struct FamilyView: View {
 
     /// The keepsake number: how many dinners this family has shared.
     private var statsHero: some View {
-        let streak = SundayCalendar.streak(mealDates: meals.compactMap(\.date))
+        let streak = SundayCalendar.streak(mealDates: history.compactMap(\.date))
         return Section {
             VStack(spacing: 6) {
-                Text("\(meals.count)")
+                Text("\(history.count)")
                     .font(.system(size: 64, weight: .bold, design: .serif))
                     .foregroundStyle(Color.sundayAccent)
                     .contentTransition(.numericText())
-                Text(meals.count == 1 ? "dinner together" : "dinners together")
+                // "Together" only once there's someone to be together with.
+                Text(store.role == .solo
+                     ? (history.count == 1 ? "Sunday logged" : "Sundays logged")
+                     : (history.count == 1 ? "dinner together" : "dinners together"))
                     .font(.headline)
-                if let first = meals.last?.date {
+                if let first = history.last?.date {
                     Text("Since \(first.formatted(.dateTime.month(.wide).year()))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -103,15 +109,7 @@ struct FamilyView: View {
     /// Everyone at the table: family members from the share (or the cooks
     /// we know), plus a spot for whoever is next.
     private var members: [String] {
-        var seen = Set<String>()
-        let fromShare = (store.share?.participants ?? []).compactMap { participant -> String? in
-            guard participant.acceptanceStatus == .accepted || participant.role == .owner,
-                  let components = participant.userIdentity.nameComponents else { return nil }
-            let name = components.formatted(.name(style: .short))
-            return name.isEmpty ? nil : name
-        }
-        let cooks = meals.compactMap { $0.cook?.trimmingCharacters(in: .whitespaces) }
-        return (fromShare + cooks).filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }.prefix(6).map { $0 }
+        Array(store.familyNames(from: history).prefix(6))
     }
 
     private var memberRow: some View {
@@ -142,14 +140,18 @@ struct FamilyView: View {
     /// Little superlatives that make this tab a keepsake, not settings.
     @ViewBuilder
     private var funStats: some View {
-        let dishes = Suggestions.group(meals.compactMap { m -> MealSummary? in
+        let dishes = Suggestions.group(history.compactMap { m -> MealSummary? in
             guard let id = m.id, let date = m.date else { return nil }
             return MealSummary(id: id, name: m.displayName, date: date, stars: nil)
         })
         let mostMade = dishes.max { $0.timesEaten < $1.timesEaten }
-        let cookCounts = Dictionary(grouping: meals.compactMap { $0.cook?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }) { $0.lowercased() }
+        let cookCounts = Dictionary(grouping: history.compactMap { $0.cook?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }) { $0.lowercased() }
         let topCook = cookCounts.max { $0.value.count < $1.value.count }
-        let first = meals.last
+        let first = history.last
+        let attendance = Attendance.counts(in: history.compactMap { m -> Attendance.Dinner? in
+            guard let id = m.id, let date = m.date else { return nil }
+            return Attendance.Dinner(id: id, date: date, people: Attendance.decode(m.attendees))
+        })
         Section {
             // Superlatives only once there's something to compare.
             if let mostMade, mostMade.timesEaten >= 3 {
@@ -162,6 +164,26 @@ struct FamilyView: View {
                     HStack(spacing: 6) {
                         CookAvatar(name: name, size: 20)
                         Text("\(name) · \(topCook.value.count) dinners")
+                    }
+                }
+            }
+            if !attendance.isEmpty {
+                NavigationLink {
+                    SundaysWithView(counts: attendance)
+                } label: {
+                    HStack(spacing: 10) {
+                        HStack(spacing: -6) {
+                            ForEach(attendance.prefix(4), id: \.name) { person in
+                                CookAvatar(name: person.name, size: 26)
+                                    .overlay(Circle().strokeBorder(Color(.secondarySystemGroupedBackground), lineWidth: 2))
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sundays with").font(.subheadline.weight(.semibold))
+                            Text(attendance.prefix(3).map { "\($0.name) \($0.count)" }.joined(separator: " · "))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -312,4 +334,24 @@ struct FamilyView: View {
 
 extension CKShare: @retroactive Identifiable {
     public var id: CKRecord.ID { recordID }
+}
+
+/// Everyone who's been at the table, and how many Sundays each.
+struct SundaysWithView: View {
+    let counts: [(name: String, count: Int)]
+
+    var body: some View {
+        List(counts, id: \.name) { person in
+            HStack(spacing: 12) {
+                CookAvatar(name: person.name, size: 36)
+                Text(person.name).font(.body.weight(.medium))
+                Spacer()
+                Text("\(person.count) Sunday\(person.count == 1 ? "" : "s")")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .accessibilityElement(children: .combine)
+        }
+        .navigationTitle("Sundays with")
+    }
 }

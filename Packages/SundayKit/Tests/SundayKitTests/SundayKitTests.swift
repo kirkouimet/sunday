@@ -423,3 +423,43 @@ final class PersonalInsightTests: XCTestCase {
         XCTAssertEqual(calendar.component(.day, from: SundayCalendar.upcomingSunday(onOrAfter: date(2026, 10, 4), calendar: calendar)), 4)
     }
 }
+
+final class AttendanceTests: XCTestCase {
+    func dinner(_ day: Int, _ people: [String]) -> Attendance.Dinner {
+        Attendance.Dinner(id: UUID(), date: Date(timeIntervalSince1970: Double(day) * 86_400), people: people)
+    }
+
+    func testEncodeDecode() {
+        XCTAssertEqual(Attendance.encode([" Mom", "dad", "Mom", ""]), "Mom,dad")
+        XCTAssertEqual(Attendance.decode("Mom, Dad,,Grandma June"), ["Mom", "Dad", "Grandma June"])
+        XCTAssertEqual(Attendance.decode(nil), [])
+    }
+
+    func testFirstSundayWithNewcomer() {
+        let a = dinner(0, ["Mom", "Dad"])
+        let b = dinner(7, ["Mom", "Dad", "June"])
+        XCTAssertNil(Attendance.moment(for: a.id, in: [a, b]), "the very first dinner has no comparison")
+        XCTAssertEqual(Attendance.moment(for: b.id, in: [b, a]), "First Sunday with June")
+    }
+
+    func testMilestoneCount() {
+        var dinners = (0..<9).map { dinner($0 * 7, ["Grandma"]) }
+        let tenth = dinner(70, ["Grandma"])
+        dinners.append(tenth)
+        XCTAssertEqual(Attendance.moment(for: tenth.id, in: dinners), "Grandma's 10th Sunday")
+        XCTAssertEqual(Attendance.counts(in: dinners).first?.count, 10)
+    }
+}
+
+final class PlanLineTests: XCTestCase {
+    func testPlanLine() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        func d(_ day: Int, _ hour: Int = 18) -> Date { calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour))! }
+        let plan = WidgetSnapshot.Item(title: "Chili", date: d(4), imageFileName: nil, mealID: UUID())
+        let snapshot = WidgetSnapshot(latest: nil, memories: [], recentDates: [], totalDinners: 0, plan: plan, planCook: "Dad")
+        XCTAssertEqual(snapshot.planLine(on: d(2, 9), calendar: calendar), "Sunday: Chili · Dad's cooking")
+        XCTAssertEqual(snapshot.planLine(on: d(4, 9), calendar: calendar), "Tonight: Chili · Dad's cooking")
+        XCTAssertNil(snapshot.planLine(on: d(5, 9), calendar: calendar))
+    }
+}

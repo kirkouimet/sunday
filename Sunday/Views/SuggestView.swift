@@ -187,7 +187,11 @@ private struct SurpriseCard: View {
                     .id(pick?.key)
                     .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
                                             removal: .move(edge: .leading).combined(with: .opacity)))
-                LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .center, endPoint: .bottom)
+                // A real scrim, so the words never sit on the food.
+                LinearGradient(stops: [.init(color: .clear, location: 0.25),
+                                       .init(color: .black.opacity(0.45), location: 0.6),
+                                       .init(color: .black.opacity(0.8), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(SundayCalendar.isSunday(.now) ? "Tonight, how about" : "This Sunday, how about")
                         .font(.subheadline.weight(.medium))

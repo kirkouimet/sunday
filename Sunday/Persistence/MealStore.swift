@@ -18,12 +18,13 @@ struct MealDraft {
     var cook = ""
     var notes = ""
     var stars = 0
+    var attendees: [String] = []
     var photos: [DraftPhoto] = []
 
     /// What the fields held when loaded from a saved dinner. Saving writes a
     /// field only if you changed it, so someone else's edit made while your
     /// editor was open isn't reverted by your stale copy.
-    private(set) var original: (name: String, date: Date, cook: String, notes: String)?
+    private(set) var original: (name: String, date: Date, cook: String, notes: String, attendees: [String])?
     /// Photos the dinner had when loaded. Only these can be deleted by a save;
     /// photos that synced in from someone else afterwards are left alone.
     private(set) var loadedPhotoIDs: Set<NSManagedObjectID> = []
@@ -43,13 +44,14 @@ struct MealDraft {
                 ?? UIImage(systemName: "photo") ?? UIImage()
             return DraftPhoto(image: image, existing: photo)
         }
-        original = (name, date, cook, notes)
+        attendees = Attendance.decode(meal.attendees)
+        original = (name, date, cook, notes, attendees)
         loadedPhotoIDs = Set(meal.sortedPhotos.map(\.objectID))
     }
 
     /// Cheap equality for "are there unsaved changes?".
     var fingerprint: String {
-        [name, cook, notes, "\(stars)", "\(date.timeIntervalSince1970)", photos.map(\.id.uuidString).joined(separator: ",")]
+        [name, cook, notes, "\(stars)", "\(date.timeIntervalSince1970)", attendees.joined(separator: ","), photos.map(\.id.uuidString).joined(separator: ",")]
             .joined(separator: "|")
     }
 }
@@ -148,6 +150,7 @@ final class MealStore: ObservableObject {
         if original == nil || draft.date != original?.date { meal.date = draft.date }
         if original == nil || draft.cook != original?.cook { meal.cook = cook }
         if original == nil || draft.notes != original?.notes { meal.notes = notes }
+        if original == nil || draft.attendees != original?.attendees { meal.attendees = Attendance.encode(draft.attendees) }
 
         // Photos: drop the ones you removed, re-order kept ones, add new ones.
         // Photos someone else added after you opened the editor stay.
@@ -173,6 +176,8 @@ final class MealStore: ObservableObject {
         }
 
         setRatingWithoutSaving(draft.stars, mealID: meal.id)
+        // A photo turns a plan into a dinner.
+        if meal.isPlan, !draft.photos.isEmpty { meal.isPlan = false }
 
         do {
             try context.save()
@@ -195,6 +200,25 @@ final class MealStore: ObservableObject {
             Task { await addToFamilyShare(objectID) }
         }
         return meal
+    }
+
+    /// "Did you have Chili?" after a planned Sunday passes without a photo.
+    func confirmPlan(_ meal: Meal, eaten: Bool) {
+        guard !meal.isGone else { return }
+        if eaten {
+            meal.isPlan = false
+            saveQuietly()
+            FamilyNotifier.markKnown(meal.id)
+        } else {
+            delete(meal)
+        }
+    }
+
+    func setRecipe(_ recipe: String, for meal: Meal) {
+        guard !meal.isGone else { return }
+        let trimmed = recipe.trimmingCharacters(in: .whitespacesAndNewlines)
+        meal.recipe = trimmed.isEmpty ? nil : trimmed
+        saveQuietly()
     }
 
     /// "Who's cooking?" from the Tonight card.
@@ -220,7 +244,10 @@ final class MealStore: ObservableObject {
         var draft = MealDraft()
         draft.name = name
         draft.date = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: sunday) ?? sunday
-        return try await save(draft)
+        let plan = try await save(draft)
+        plan.isPlan = true
+        saveQuietly()
+        return plan
     }
 
     /// Vision takes up to a second; don't make the cook wait for it.
@@ -317,7 +344,8 @@ final class MealStore: ObservableObject {
     func summaries(meals: [Meal], ratings: [Rating]) -> [MealSummary] {
         let starsByMeal = Self.starsByMeal(ratings)
         return meals.compactMap { meal in
-            guard let id = meal.id, let date = meal.date else { return nil }
+            // Plans aren't history yet.
+            guard !meal.isPlan, let id = meal.id, let date = meal.date else { return nil }
             return MealSummary(id: id, name: meal.displayName, date: date, stars: starsByMeal[id])
         }
     }
@@ -334,6 +362,30 @@ final class MealStore: ObservableObject {
     }
 
     // MARK: Family sharing
+
+    /// Names of people in the family share (owner and accepted members).
+    var participantNames: [String] {
+        (share?.participants ?? []).compactMap { participant -> String? in
+            guard participant.role == .owner || participant.acceptanceStatus == .accepted,
+                  let components = participant.userIdentity.nameComponents else { return nil }
+            let name = components.formatted(.name(style: .short))
+            return name.isEmpty ? nil : name
+        }
+    }
+
+    /// Everyone we know of at this family's table: share members, cooks and
+    /// past guests, most-seen first.
+    func familyNames(from meals: [Meal]) -> [String] {
+        var counts: [String: (name: String, count: Int)] = [:]
+        for name in participantNames { counts[name.lowercased(), default: (name, 0)].count += 1000 }
+        for meal in meals {
+            let people = Attendance.decode(meal.attendees) + [meal.cook ?? ""]
+            for person in people.map({ $0.trimmingCharacters(in: .whitespaces) }) where !person.isEmpty {
+                counts[person.lowercased(), default: (person, 0)].count += 1
+            }
+        }
+        return counts.values.sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }.map(\.name)
+    }
 
     func refreshShare() {
         guard persistence.isCloudBacked else { return }

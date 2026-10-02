@@ -13,15 +13,19 @@ enum PreviewData {
         let colors: (UIColor, UIColor)
         var photoCount = 1
         var tags: [String] = []
+        var attendees: [String] = ["Mom", "Dad", "Ellie"]
+        var recipe: String? = nil
     }
 
     private static let dinners: [Dinner] = [
         Dinner(name: "Lemon chicken & roasted potatoes", weeksAgo: 0, stars: nil, notes: "Grandma came over.",
-               symbol: "fork.knife", colors: (.systemOrange, .systemYellow), photoCount: 3, tags: ["chicken", "potato"]),
+               symbol: "fork.knife", colors: (.systemOrange, .systemYellow), photoCount: 3, tags: ["chicken", "potato"],
+               attendees: ["Mom", "Dad", "Ellie", "Grandma June"]),
         Dinner(name: "Butternut squash soup", weeksAgo: 1, stars: 4, notes: "",
                symbol: "cup.and.saucer.fill", colors: (.systemOrange, .systemBrown), tags: ["soup"]),
         Dinner(name: "Homemade pizza night", weeksAgo: 2, stars: 5, notes: "Kids made their own.",
-               symbol: "flame.fill", colors: (.systemRed, .systemOrange), photoCount: 2),
+               symbol: "flame.fill", colors: (.systemRed, .systemOrange), photoCount: 2,
+               attendees: ["Mom", "Dad", "Ellie", "Sam"]),
         Dinner(name: "Salmon with rice", weeksAgo: 3, stars: 4, notes: "",
                symbol: "fish.fill", colors: (.systemPink, .systemOrange)),
         Dinner(name: "Pot roast", weeksAgo: 10, stars: 5, notes: "",
@@ -31,7 +35,8 @@ enum PreviewData {
         Dinner(name: "Chili", weeksAgo: 52, stars: 5, notes: "Perfect for the first cold Sunday.",
                symbol: "flame.fill", colors: (.systemRed, .brown)),
         Dinner(name: "Lemon chicken & roasted potatoes", weeksAgo: 60, stars: 4, notes: "",
-               symbol: "fork.knife", colors: (.systemOrange, .systemYellow)),
+               symbol: "fork.knife", colors: (.systemOrange, .systemYellow),
+               recipe: "1 whole chicken, 2 lemons, 2 lb small potatoes, garlic, thyme.\n\nPotatoes in first at 425°F for 15 minutes. Chicken on top with lemon halves and garlic, 55 more minutes. Squeeze the roasted lemon over everything."),
         Dinner(name: "Thanksgiving turkey", weeksAgo: 45, stars: 5, notes: "Everyone was here.",
                symbol: "leaf.fill", colors: (.systemBrown, .systemOrange)),
         Dinner(name: "Birthday lasagna", weeksAgo: 30, stars: 5, notes: "",
@@ -49,10 +54,12 @@ enum PreviewData {
             meal.id = UUID()
             meal.name = dinner.name
             meal.date = date
-            meal.cook = "Mom"
+            meal.cook = dinner.weeksAgo == 2 ? "Dad" : "Mom"
             meal.notes = dinner.notes
             meal.createdAt = date
             meal.tags = dinner.tags.isEmpty ? nil : FoodTags.encode(dinner.tags)
+            meal.attendees = Attendance.encode(dinner.attendees)
+            meal.recipe = dinner.recipe
 
             for index in 0..<dinner.photoCount {
                 let image = illustration(symbol: dinner.symbol, colors: dinner.colors, variant: index)

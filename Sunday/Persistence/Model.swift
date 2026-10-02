@@ -13,6 +13,13 @@ final class Meal: NSManagedObject, Identifiable {
     @NSManaged var notes: String?
     /// On-device food tags from the first photo, e.g. "pasta,salad".
     @NSManaged var tags: String?
+    /// Who was at the table: "Mom,Dad,Grandma June".
+    @NSManaged var attendees: String?
+    /// The family's own way of making this dish, if someone wrote it down.
+    @NSManaged var recipe: String?
+    /// Planned ahead ("Make it Sunday") and not yet confirmed as eaten.
+    /// Plans don't count as history until a photo or a "yes, we had it".
+    @NSManaged var isPlan: Bool
     @NSManaged var createdAt: Date?
     @NSManaged var photos: NSSet?
 
@@ -106,6 +113,9 @@ enum SundayModel {
             attribute("cook", .stringAttributeType),
             attribute("notes", .stringAttributeType),
             attribute("tags", .stringAttributeType),
+            attribute("attendees", .stringAttributeType),
+            attribute("recipe", .stringAttributeType),
+            attribute("isPlan", .booleanAttributeType, default: false),
             attribute("createdAt", .dateAttributeType),
             mealPhotos,
         ])

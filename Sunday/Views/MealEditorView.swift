@@ -30,6 +30,7 @@ struct MealEditorView: View {
     @State private var joinedMeal: Meal?
     @State private var dismissedSameDayPrompt = false
     @State private var isTypingNewCook = false
+    @State private var newGuest = ""
     @FocusState private var focusedField: Field?
 
     private enum Field { case name, cook, notes }
@@ -48,7 +49,8 @@ struct MealEditorView: View {
     }
     private var hasChanges: Bool { draft.fingerprint != initialFingerprint }
     private var canSave: Bool {
-        !isSaving && (!draft.name.trimmingCharacters(in: .whitespaces).isEmpty || !draft.photos.isEmpty)
+        !isSaving && sameDayMeal == nil
+            && (!draft.name.trimmingCharacters(in: .whitespaces).isEmpty || !draft.photos.isEmpty)
     }
 
     private var otherMeals: [MealSummary] {
@@ -80,9 +82,14 @@ struct MealEditorView: View {
                     }
                 }
                 photosSection
-                nameSection
-                starsSection
-                detailsSection
+                // Until "already posted?" is answered, the rest of the form
+                // waits, so Save can't quietly create a second dinner.
+                if sameDayMeal == nil {
+                    nameSection
+                    starsSection
+                    tableSection
+                    detailsSection
+                }
             }
             .navigationTitle(isEditing ? "Edit dinner"
                              : joinedMeal != nil ? "Add to dinner"
@@ -252,16 +259,72 @@ struct MealEditorView: View {
     /// Known cooks (from past dinners and the family share) as tappable
     /// people, with "Someone else" for a new name.
     private var cookChoices: [String] {
-        var seen = Set<String>()
-        let participants = (store.share?.participants ?? []).compactMap { participant -> String? in
-            guard let components = participant.userIdentity.nameComponents else { return nil }
-            let name = components.formatted(.name(style: .short))
-            return name.isEmpty ? nil : name
+        Array(store.familyNames(from: Array(allMeals)).prefix(6))
+    }
+
+    /// "Who was at the table?" One tap per person; it's what makes years of
+    /// dinners a record of people, not just food.
+    private var tableSection: some View {
+        let known = store.familyNames(from: Array(allMeals))
+        let everyone = known + draft.attendees.filter { name in !known.contains { $0.caseInsensitiveCompare(name) == .orderedSame } }
+        return Section {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(everyone, id: \.self) { person in
+                        let here = draft.attendees.contains { $0.caseInsensitiveCompare(person) == .orderedSame }
+                        Button {
+                            if here {
+                                draft.attendees.removeAll { $0.caseInsensitiveCompare(person) == .orderedSame }
+                            } else {
+                                draft.attendees.append(person)
+                            }
+                        } label: {
+                            VStack(spacing: 4) {
+                                CookAvatar(name: person, size: 40)
+                                    .opacity(here ? 1 : 0.35)
+                                    .overlay(alignment: .bottomTrailing) {
+                                        if here {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .symbolRenderingMode(.palette)
+                                                .font(.footnote)
+                                                .foregroundStyle(.white, Color.sundayAccent)
+                                        }
+                                    }
+                                Text(person)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: 64)
+                            }
+                            .frame(minWidth: 52, minHeight: 64)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(person)
+                        .accessibilityAddTraits(here ? .isSelected : [])
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            HStack {
+                TextField("Add a guest", text: $newGuest)
+                    .textInputAutocapitalization(.words)
+                    .submitLabel(.done)
+                    .onSubmit(addGuest)
+                if !newGuest.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button("Add", action: addGuest)
+                }
+            }
+        } header: {
+            Text("Who was at the table?")
         }
-        return (allMeals.compactMap { $0.cook?.trimmingCharacters(in: .whitespaces) } + participants)
-            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
-            .prefix(6)
-            .map { $0 }
+    }
+
+    private func addGuest() {
+        let name = newGuest.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        if !draft.attendees.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+            draft.attendees.append(name)
+        }
+        newGuest = ""
     }
 
     private var detailsSection: some View {

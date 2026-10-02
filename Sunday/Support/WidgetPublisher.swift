@@ -13,7 +13,11 @@ enum WidgetPublisher {
         guard !PersistenceController.isUITesting else { return }
         let mealsRequest = NSFetchRequest<Meal>(entityName: "Meal")
         mealsRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Meal.date, ascending: false)]
-        let meals = (try? store.context.fetch(mealsRequest)) ?? []
+        let all = (try? store.context.fetch(mealsRequest)) ?? []
+        let meals = all.filter { !$0.isPlan }
+        let startOfToday = Calendar.current.startOfDay(for: .now)
+        let upcomingPlan = all.filter { $0.isPlan && ($0.date ?? .distantPast) >= startOfToday }
+            .min { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
 
         var images: [String: Data] = [:]
         func item(for meal: Meal) -> WidgetSnapshot.Item? {
@@ -41,7 +45,9 @@ enum WidgetPublisher {
             latest: meals.first.flatMap(item(for:)),
             memories: memories,
             recentDates: Array(meals.compactMap(\.date).prefix(120)),
-            totalDinners: meals.count
+            totalDinners: meals.count,
+            plan: upcomingPlan.flatMap(item(for:)),
+            planCook: upcomingPlan?.cook.flatMap { $0.isEmpty ? nil : $0 }
         )
 
         if let lastPublished, lastPublished.hasSameContent(as: snapshot) { return }

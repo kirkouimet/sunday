@@ -21,7 +21,7 @@ final class ScreenshotTests: XCTestCase {
         app.launchArguments = ["-uiTesting"] + arguments
         app.launch()
 
-        let card = app.buttons["mealCard"].firstMatch
+        let card = app.buttons["heroCard"].firstMatch
         guard card.waitForExistence(timeout: 15) else {
             snap("0-launch-failed", variant)
             XCTFail("Feed never showed a dinner")
@@ -33,7 +33,7 @@ final class ScreenshotTests: XCTestCase {
         snap("2-feed-scrolled", variant)
 
         // Detail
-        let firstCard = app.buttons["mealCard"].firstMatch
+        let firstCard = app.buttons["heroCard"].firstMatch
         if firstCard.isHittable {
             firstCard.tap()
         } else {
@@ -55,6 +55,9 @@ final class ScreenshotTests: XCTestCase {
             add.tap()
             sleep(1)
             snap("5-new-dinner", variant)
+            // Sample data already has a dinner that day; choose a new one to reach the form.
+            let different = app.buttons["Different dinner"].firstMatch
+            if different.waitForExistence(timeout: 2) { different.tap() }
             let nameField = app.textFields.firstMatch
             if nameField.waitForExistence(timeout: 3) {
                 nameField.tap()

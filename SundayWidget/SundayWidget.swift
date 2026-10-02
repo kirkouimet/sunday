@@ -96,15 +96,49 @@ struct SundayWidgetView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        Group {
-            switch family {
-            case .systemMedium:
-                medium
-            default:
-                small
+        switch family {
+        case .accessoryRectangular:
+            lockScreen.containerBackground(for: .widget) { Color.clear }
+        case .accessoryInline:
+            Text(entry.snapshot.planLine(on: entry.date) ?? lockScreenFallback)
+                .containerBackground(for: .widget) { Color.clear }
+        case .systemMedium:
+            medium.containerBackground(for: .widget) { Color.black }
+        default:
+            small.containerBackground(for: .widget) { Color.black }
+        }
+    }
+
+    /// Lock Screen: tonight's plan and the cook, so Sunday is on every
+    /// family phone before anyone opens the app.
+    private var lockScreen: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let line = entry.snapshot.planLine(on: entry.date) {
+                Label("Sunday dinner", systemImage: "fork.knife")
+                    .font(.caption2.weight(.semibold))
+                Text(line)
+                    .font(.headline)
+                    .lineLimit(2)
+            } else {
+                Label("Sunday", systemImage: "fork.knife")
+                    .font(.caption2.weight(.semibold))
+                Text(lockScreenFallback)
+                    .font(.headline)
+                    .lineLimit(2)
             }
         }
-        .containerBackground(for: .widget) { Color.black }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .widgetURL(URL(string: "sunday://feed"))
+    }
+
+    private var lockScreenFallback: String {
+        if let memory = entry.snapshot.memory(on: entry.date) {
+            return "\(WidgetSnapshot.memoryCaption(for: memory.date, on: entry.date)): \(memory.title)"
+        }
+        if let latest = entry.snapshot.latest {
+            return "\(WidgetSnapshot.latestCaption(for: latest.date, on: entry.date)): \(latest.title)"
+        }
+        return "What's for Sunday?"
     }
 
     private var latest: TileContent? {
@@ -179,7 +213,7 @@ struct SundayWidget: Widget {
         }
         .configurationDisplayName("Sunday dinner")
         .description("Last Sunday's dinner, and what you ate this time in years past.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
         .contentMarginsDisabled()
     }
 }
