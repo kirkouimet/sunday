@@ -12,6 +12,7 @@ extension Hemisphere {
 
 extension Meal {
     var season: Season { Season.of(date ?? .now, hemisphere: .current) }
+    var holiday: Holiday? { date.flatMap { Holidays.holiday(near: $0) } }
 
     /// True once the object is gone, locally or because someone else deleted it.
     var isGone: Bool { isDeleted || managedObjectContext == nil }
@@ -116,6 +117,24 @@ struct YourStarsLabel: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Your rating, \(starsDescription(stars))")
+    }
+}
+
+/// Shows the holiday when there is one, otherwise the season.
+struct OccasionBadge: View {
+    let meal: Meal
+
+    var body: some View {
+        if let holiday = meal.holiday {
+            Text(holiday.label)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.thinMaterial, in: Capsule())
+                .accessibilityLabel(holiday.name)
+        } else {
+            SeasonBadge(season: meal.season)
+        }
     }
 }
 

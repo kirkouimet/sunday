@@ -121,6 +121,25 @@ public struct Suggestions: Sendable {
             .map(\.0)
     }
 
+    /// If a holiday is coming up within `days`, it and the dinners from that
+    /// holiday in earlier years (newest first).
+    public func upcomingHoliday(within days: Int = 14) -> (holiday: Holiday, meals: [MealSummary])? {
+        let today = calendar.startOfDay(for: now)
+        for offset in 0...days {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: today),
+                  let holiday = Holidays.holiday(near: day, calendar: calendar)
+            else { continue }
+            let currentYear = calendar.component(.year, from: now)
+            let past = dishes.flatMap(\.meals).filter { meal in
+                calendar.component(.year, from: meal.date) < currentYear
+                    && Holidays.holiday(near: meal.date, calendar: calendar)?.emoji == holiday.emoji
+            }
+            guard !past.isEmpty else { return nil }
+            return (holiday, past.sorted { $0.date > $1.date })
+        }
+        return nil
+    }
+
     /// A random pick for "Surprise me": prefers favorites, falls back to anything decent.
     public func surprise<G: RandomNumberGenerator>(using generator: inout G) -> Dish? {
         let pool = favoritesDue(minDaysSince: 14)

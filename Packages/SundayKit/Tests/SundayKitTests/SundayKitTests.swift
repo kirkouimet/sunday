@@ -197,3 +197,78 @@ final class WidgetStorageTests: XCTestCase {
         XCTAssertNil(DeepLink.mealID(from: URL(string: "https://example.com/meal/\(id)")!))
     }
 }
+
+final class HolidaysTests: XCTestCase {
+    var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 18))!
+    }
+
+    func name(_ year: Int, _ month: Int, _ day: Int) -> String? {
+        Holidays.holiday(near: date(year, month, day), calendar: calendar)?.name
+    }
+
+    func testEaster() {
+        let easter = Holidays.easter(2026, calendar: calendar)!
+        XCTAssertEqual(calendar.dateComponents([.month, .day], from: easter), DateComponents(month: 4, day: 5))
+        XCTAssertEqual(name(2026, 4, 5), "Easter")
+        XCTAssertEqual(name(2025, 4, 20), "Easter")
+    }
+
+    func testSundayHolidays() {
+        XCTAssertEqual(name(2026, 5, 10), "Mother's Day")
+        XCTAssertEqual(name(2026, 6, 21), "Father's Day")
+    }
+
+    func testThanksgivingWeekend() {
+        // Thanksgiving 2026 is Thursday Nov 26; Sunday after is Nov 29.
+        XCTAssertEqual(name(2026, 11, 26), "Thanksgiving")
+        XCTAssertEqual(name(2026, 11, 29), "Thanksgiving weekend")
+        XCTAssertNil(name(2026, 11, 22))
+    }
+
+    func testFixedHolidaysNearby() {
+        XCTAssertEqual(name(2026, 12, 27), "Christmas")
+        XCTAssertEqual(name(2026, 11, 1), "Halloween")
+        XCTAssertEqual(name(2027, 1, 3), "New Year's")
+        XCTAssertEqual(name(2026, 12, 30), "New Year's Eve")
+        XCTAssertNil(name(2026, 9, 20))
+    }
+}
+
+final class UpcomingHolidayTests: XCTestCase {
+    var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 18))!
+    }
+
+    func testFindsPastThanksgivingDinners() {
+        let meals = [
+            MealSummary(id: UUID(), name: "Turkey", date: date(2025, 11, 30), stars: 5), // Sunday after Thanksgiving 2025
+            MealSummary(id: UUID(), name: "Ham", date: date(2024, 11, 28), stars: 4),    // Thanksgiving 2024
+            MealSummary(id: UUID(), name: "Tacos", date: date(2025, 10, 5), stars: 3),
+        ]
+        let s = Suggestions(meals: meals, now: date(2026, 11, 15), calendar: calendar)
+        let upcoming = s.upcomingHoliday(within: 14)
+        XCTAssertEqual(upcoming?.holiday.emoji, "🦃")
+        XCTAssertEqual(upcoming?.meals.map(\.name), ["Turkey", "Ham"])
+    }
+
+    func testNothingWhenNoHistory() {
+        let s = Suggestions(meals: [], now: date(2026, 11, 15), calendar: calendar)
+        XCTAssertNil(s.upcomingHoliday())
+        let far = Suggestions(meals: [MealSummary(id: UUID(), name: "Turkey", date: date(2025, 11, 30), stars: 5)],
+                              now: date(2026, 9, 1), calendar: calendar)
+        XCTAssertNil(far.upcomingHoliday())
+    }
+}

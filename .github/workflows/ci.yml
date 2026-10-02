@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
 
+# A newer push makes older runs on the same branch pointless (macOS minutes add up).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-15
@@ -30,6 +35,7 @@ jobs:
   screenshots:
     runs-on: macos-15
     needs: build
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

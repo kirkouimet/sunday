@@ -26,6 +26,7 @@ struct SuggestView: View {
             let pastYears = Array(suggestions.thisTimeInPastYears().prefix(8))
             let seasonal = Array(suggestions.goodForThisSeason().prefix(8))
             let season = Season.of(.now, hemisphere: .current)
+            let holiday = suggestions.upcomingHoliday()
 
             List {
                 Section {
@@ -45,6 +46,16 @@ struct SuggestView: View {
 
                     if let surprise {
                         dishRow(surprise, detail: "Last had \(surprise.lastEaten.dinnerFormatted)")
+                    }
+                }
+
+                if let holiday {
+                    Section {
+                        ForEach(holiday.meals.prefix(6)) { summary in
+                            mealRow(summary)
+                        }
+                    } header: {
+                        Text("\(holiday.holiday.emoji) \(holiday.holiday.name) is coming. Here's what we made before")
                     }
                 }
 

@@ -66,6 +66,14 @@ struct MealDetailView: View {
                     HStack(spacing: 8) {
                         Text((meal.date ?? .now).dinnerFormatted)
                         SeasonBadge(season: meal.season)
+                        if let holiday = meal.holiday {
+                            Text(holiday.label)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.sundayAccent.opacity(0.15), in: Capsule())
+                                .accessibilityLabel(holiday.name)
+                        }
                     }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

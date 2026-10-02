@@ -236,7 +236,7 @@ struct MealCard: View {
                 .frame(height: 240)
                 .frame(maxWidth: .infinity)
                 .overlay(alignment: .topLeading) {
-                    SeasonBadge(season: meal.season).padding(10)
+                    OccasionBadge(meal: meal).padding(10)
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if meal.sortedPhotos.count > 1 {
@@ -290,7 +290,7 @@ struct MealCard: View {
     private var accessibilityText: String {
         var parts = [meal.displayName, (meal.date ?? .now).dinnerFormatted]
         if let cook = meal.cook, !cook.isEmpty { parts.append("cooked by \(cook)") }
-        parts.append(meal.season.displayName)
+        parts.append(meal.holiday?.name ?? meal.season.displayName)
         let count = meal.sortedPhotos.count
         if count > 1 { parts.append("\(count) photos") }
         return parts.joined(separator: ", ")
