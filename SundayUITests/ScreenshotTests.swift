@@ -64,8 +64,9 @@ final class ScreenshotTests: XCTestCase {
             }
             app.buttons["Cancel"].firstMatch.tap()
             let discard = app.buttons["Discard"].firstMatch
-            if discard.waitForExistence(timeout: 2) { discard.tap() }
-            sleep(1)
+            if discard.waitForExistence(timeout: 4) { discard.tap() }
+            // At large text sizes the sheet takes a moment to go away.
+            _ = app.tabBars.firstMatch.waitForExistence(timeout: 6)
         } else {
             XCTFail("No add button")
         }
@@ -79,7 +80,7 @@ final class ScreenshotTests: XCTestCase {
 
     private func tapTab(_ app: XCUIApplication, _ name: String) {
         let tab = app.tabBars.buttons[name].firstMatch
-        if tab.waitForExistence(timeout: 3) {
+        if tab.waitForExistence(timeout: 6) {
             tab.tap()
         } else {
             app.buttons[name].firstMatch.tap()
