@@ -11,3 +11,6 @@ DerivedData/
 *.xcresult
 SundayWidget/Info.plist
 SundayWidget/SundayWidget.entitlements
+
+# Raw simulator captures: regenerate with the command in AppStore/Screenshots.md
+AppStore/Screenshots/raw/

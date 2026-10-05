@@ -43,6 +43,30 @@ enum PreviewData {
                symbol: "birthday.cake.fill", colors: (.systemPurple, .systemPink)),
     ]
 
+    /// Each dish's photo file ("lemon-chicken-1.jpg") and the line the
+    /// on-device model would write for it.
+    private static let seen: [String: (photo: String, caption: String)] = [
+        "Lemon chicken & roasted potatoes": ("lemon-chicken", "Roast chicken with golden potato wedges."),
+        "Butternut squash soup": ("squash-soup", "A bowl of squash soup with seeds and cheese."),
+        "Homemade pizza night": ("pizza", "A homemade pizza with tomato slices and olives."),
+        "Salmon with rice": ("salmon", "Salmon with rice and lemon on a plate."),
+        "Pot roast": ("pot-roast", "Pot roast with green beans and mashed potatoes."),
+        "Tacos": ("tacos", "Three tacos with meat, onion and cilantro."),
+        "Chili": ("chili", "A bowl of chili topped with shredded cheese."),
+        "Thanksgiving turkey": ("turkey", "A roast turkey in the pan."),
+        "Birthday lasagna": ("lasagna", "A slice of lasagna with melted cheese."),
+    ]
+
+    /// App Store screenshots use real photos: point SUNDAY_SAMPLE_PHOTOS at a
+    /// folder of "<dish>-<n>.jpg" (see AppStore/SamplePhotos). Without it, or
+    /// for a dish with no file, the drawn plate stands in.
+    private static func samplePhoto(for dish: String, index: Int) -> UIImage? {
+        guard let folder = ProcessInfo.processInfo.environment["SUNDAY_SAMPLE_PHOTOS"],
+              let name = seen[dish]?.photo
+        else { return nil }
+        return UIImage(contentsOfFile: "\(folder)/\(name)-\(index + 1).jpg")
+    }
+
     static func populate(_ context: NSManagedObjectContext) {
         let calendar = Calendar.current
         let lastSunday = calendar.date(bySettingHour: 18, minute: 30, second: 0,
@@ -60,9 +84,11 @@ enum PreviewData {
             meal.tags = dinner.tags.isEmpty ? nil : FoodTags.encode(dinner.tags)
             meal.attendees = Attendance.encode(dinner.attendees)
             meal.recipe = dinner.recipe
+            meal.caption = seen[dinner.name]?.caption
 
             for index in 0..<dinner.photoCount {
-                let image = illustration(symbol: dinner.symbol, colors: dinner.colors, variant: index)
+                let image = samplePhoto(for: dinner.name, index: index)
+                    ?? illustration(symbol: dinner.symbol, colors: dinner.colors, variant: index)
                 let photo = Photo(context: context)
                 photo.id = UUID()
                 photo.createdAt = date
@@ -106,7 +132,8 @@ enum PreviewData {
             photo.sortIndex = Int16(index)
             photo.by = index == 0 ? "Dad" : "Ellie"
             photo.createdAt = started.addingTimeInterval(Double(index) * 600)
-            photo.imageData = illustration(symbol: "flame.fill", colors: (.systemRed, .brown), variant: index)
+            photo.imageData = (samplePhoto(for: "Chili", index: index)
+                ?? illustration(symbol: "flame.fill", colors: (.systemRed, .brown), variant: index))
                 .jpegData(compressionQuality: 0.8)
             photo.thumbnailData = photo.imageData
             photo.meal = meal

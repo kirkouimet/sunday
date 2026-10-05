@@ -17,8 +17,11 @@ final class ScreenshotTests: XCTestCase {
     }
 
     private func captureAll(variant: String, arguments: [String] = []) {
+        // Real photos for App Store shots: TEST_RUNNER_SUNDAY_SAMPLE_PHOTOS=<folder>.
+        let photos = ProcessInfo.processInfo.environment["SUNDAY_SAMPLE_PHOTOS"]
         let app = XCUIApplication()
         app.launchArguments = ["-uiTesting"] + arguments
+        app.launchEnvironment["SUNDAY_SAMPLE_PHOTOS"] = photos
         app.launch()
 
         let card = app.buttons["heroCard"].firstMatch
@@ -94,6 +97,7 @@ final class ScreenshotTests: XCTestCase {
         app.terminate()
         let live = XCUIApplication()
         live.launchArguments = ["-uiTesting", "-uiLive"] + arguments
+        live.launchEnvironment["SUNDAY_SAMPLE_PHOTOS"] = photos
         live.launch()
         if live.otherElements["liveCard"].firstMatch.waitForExistence(timeout: 15)
             || live.staticTexts["Chili"].firstMatch.waitForExistence(timeout: 3) {
