@@ -12,3 +12,9 @@ Everything for putting Sunday on the App Store for iPhone and iPad.
 | `SamplePhotos/` | The stand-in dinner photos and their sources |
 
 App Store Connect record: `Sunday: Family Dinners`, Apple ID `6819416903`, bundle ID `cooking.sunday.Sunday`, SKU `sunday-ios-1`.
+
+## Where App Store Connect stands (October 5, 2026)
+
+Done: app record, name, subtitle, categories, content rights, age rating (4+), version 1.0 copy, keywords, URLs, copyright, iPhone and iPad screenshots, price (free), availability (175 regions; Mac and Vision Pro turned off), privacy policy URL, "Data Not Collected" answer, manual release.
+
+Still open: publish the privacy label (an attestation, the Account Holder's to click), the App Review section (needs a contact phone number before it will save; notes are in `ReviewNotes.md`), a build, and the EU trader status.

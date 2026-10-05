@@ -15,20 +15,18 @@ Tracking: **No.** The privacy manifest (`Sunday/PrivacyInfo.xcprivacy`) declares
 
 ## Age rating questionnaire
 
-Every content question: **None** / **No**. Specifically:
+Answered in App Store Connect on October 5, 2026. Calculated rating: **4+**.
 
-| Question | Answer |
+| Step | Answer |
 |---|---|
-| Violence, sexual content, profanity, drugs, gambling, horror, medical | None |
+| In-app controls (parental controls, age assurance) | No |
 | Unrestricted web access | No |
-| User-generated content | Yes, shared only inside a private family group the owner invites by link; nothing is public |
-| Messaging and chat | No |
+| User-generated content | No. Apple's question is about "broad distribution" of user content; Sunday's dinners go only to a private family group the owner invites by link |
+| Social media | No |
+| Messaging and chat | No. "Tell the table" opens the system share sheet; there is no in-app messaging |
 | Advertising | No |
-| Parental controls / age assurance | No |
-
-Expected rating: **4+**. If the user-generated-content answer raises it, that is still correct; don't answer "No" to avoid it.
-
-Made for Kids: **No.** Sunday is a general-audience family app, not a Kids Category app.
+| Mature themes, medical, sexuality, violence, chance-based activities | None |
+| Age categories and override | Not Applicable (not "Made for Kids") |
 
 ## Permission prompts already in the app
 
