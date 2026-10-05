@@ -1,6 +1,6 @@
 name: Sunday
 options:
-  bundleIdPrefix: com.kirkouimet
+  bundleIdPrefix: cooking.sunday
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -9,7 +9,7 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
-    DEVELOPMENT_TEAM: "" # set your Apple Developer Team ID here or in Xcode
+    DEVELOPMENT_TEAM: "6YC8868VS9" # Kirk Ouimet (organization)
 packages:
   SundayKit:
     path: Packages/SundayKit
@@ -27,9 +27,9 @@ targets:
       path: Sunday/Sunday.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.com.kirkouimet.sunday
+          - group.cooking.sunday.Sunday
         com.apple.developer.icloud-container-identifiers:
-          - iCloud.com.kirkouimet.sunday
+          - iCloud.cooking.sunday.Sunday
         com.apple.developer.icloud-services:
           - CloudKit
         aps-environment: development
@@ -39,7 +39,7 @@ targets:
         CFBundleDisplayName: Sunday
         CKSharingSupported: true
         CFBundleURLTypes:
-          - CFBundleURLName: com.kirkouimet.sunday
+          - CFBundleURLName: cooking.sunday.Sunday
             CFBundleURLSchemes:
               - sunday
         ITSAppUsesNonExemptEncryption: false
@@ -61,7 +61,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.kirkouimet.sunday
+        PRODUCT_BUNDLE_IDENTIFIER: cooking.sunday.Sunday
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -79,7 +79,7 @@ targets:
       path: SundayWidget/SundayWidget.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.com.kirkouimet.sunday
+          - group.cooking.sunday.Sunday
     info:
       path: SundayWidget/Info.plist
       properties:
@@ -88,7 +88,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.kirkouimet.sunday.widget
+        PRODUCT_BUNDLE_IDENTIFIER: cooking.sunday.Sunday.widget
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1,2"
   SundayUITests:
@@ -100,7 +100,7 @@ targets:
       - target: Sunday
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.kirkouimet.sunday.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: cooking.sunday.Sunday.uitests
         GENERATE_INFOPLIST_FILE: true
         CODE_SIGN_STYLE: Automatic
 schemes:

@@ -9,7 +9,7 @@ import os
 /// evening is wrapped up or the window passes.
 @MainActor
 enum LiveDinners {
-    private static let logger = Logger(subsystem: "com.kirkouimet.sunday", category: "live")
+    private static let logger = Logger(subsystem: "cooking.sunday.Sunday", category: "live")
 
     /// The newest photo, small, where the widget extension can read it.
     private static func writeThumbnail(of meal: Meal, id: String) -> String? {

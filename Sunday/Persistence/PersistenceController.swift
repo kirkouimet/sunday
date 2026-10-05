@@ -12,7 +12,7 @@ import os
 /// A fetch on `viewContext` reads both stores, so the feed just works for
 /// owners and participants alike.
 final class PersistenceController {
-    static let cloudKitContainerID = "iCloud.com.kirkouimet.sunday"
+    static let cloudKitContainerID = "iCloud.cooking.sunday.Sunday"
     /// UI tests (and screenshot runs) get an in-memory store full of sample dinners.
     static let isUITesting = ProcessInfo.processInfo.arguments.contains("-uiTesting")
     static let shared = isUITesting ? preview : PersistenceController()
@@ -28,7 +28,7 @@ final class PersistenceController {
     private(set) var sharedStore: NSPersistentStore?
     let isCloudBacked: Bool
 
-    private let logger = Logger(subsystem: "com.kirkouimet.sunday", category: "persistence")
+    private let logger = Logger(subsystem: "cooking.sunday.Sunday", category: "persistence")
 
     var ckContainer: CKContainer { CKContainer(identifier: Self.cloudKitContainerID) }
 

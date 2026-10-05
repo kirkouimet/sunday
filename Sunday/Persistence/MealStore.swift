@@ -102,7 +102,7 @@ final class MealStore: ObservableObject {
     private static let orphanedRatingsKey = "orphanedRatingsFirstSeen"
     /// How long a rating must point at a missing dinner before we delete it.
     private static let orphanGracePeriod: TimeInterval = 21 * 86_400
-    private let logger = Logger(subsystem: "com.kirkouimet.sunday", category: "store")
+    private let logger = Logger(subsystem: "cooking.sunday.Sunday", category: "store")
     private var observers: [NSObjectProtocol] = []
     private var reconcileTask: Task<Void, Never>?
     private var sharingInFlight = Set<NSManagedObjectID>()

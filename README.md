@@ -38,8 +38,8 @@ xcodegen generate
 open Sunday.xcodeproj
 ```
 
-1. In **Signing & Capabilities**, choose your team. If `com.kirkouimet.sunday` is taken, change the bundle ID and the iCloud container ID in `project.yml` and `PersistenceController.swift`.
-2. Make sure the iCloud container `iCloud.com.kirkouimet.sunday` is checked under iCloud → CloudKit.
+1. In **Signing & Capabilities**, choose your team. If `cooking.sunday.Sunday` is taken, change the bundle ID and the iCloud container ID in `project.yml` and `PersistenceController.swift`.
+2. Make sure the iCloud container `iCloud.cooking.sunday.Sunday` is checked under iCloud → CloudKit.
 3. Run on a real device signed into iCloud. Simulators can sync too, but sharing works best on devices.
 4. First run only: set the environment variable `SUNDAY_INIT_CLOUDKIT_SCHEMA=1` in the scheme to push the schema to CloudKit's development environment. Before TestFlight or the App Store, **deploy the schema to production** in the [CloudKit Console](https://icloud.developer.apple.com).
 
@@ -51,7 +51,7 @@ swift test --package-path Packages/SundayKit
 
 ## Before shipping to TestFlight
 
-- [ ] Set your team, bundle ID, iCloud container (`iCloud.com.kirkouimet.sunday`) and App Group (`group.com.kirkouimet.sunday`) in `project.yml`
+- [ ] Set your team, bundle ID, iCloud container (`iCloud.cooking.sunday.Sunday`) and App Group (`group.cooking.sunday.Sunday`) in `project.yml`
 - [ ] Run once with `SUNDAY_INIT_CLOUDKIT_SCHEMA=1`, then **deploy the schema to production** in the CloudKit Console. Do this again whenever the model changes (e.g. `Meal.tags`).
 - [ ] Test sharing with two Apple IDs on two devices: invite, accept (with the app closed and with it open), both posting the same night, deleting, and ratings staying private
 - [ ] Test upgrading from an older build (lightweight migration of the code-built Core Data model)

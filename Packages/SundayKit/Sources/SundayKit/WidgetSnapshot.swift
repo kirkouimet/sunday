@@ -96,7 +96,7 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
 }
 
 public enum WidgetStorage {
-    public static let appGroupID = "group.com.kirkouimet.sunday"
+    public static let appGroupID = "group.cooking.sunday.Sunday"
     private static let fileName = "widget-snapshot.json"
 
     public static var directory: URL? {

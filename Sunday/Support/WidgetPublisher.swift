@@ -6,7 +6,7 @@ import os
 /// Writes the small snapshot the home-screen widget reads.
 @MainActor
 enum WidgetPublisher {
-    private static let logger = Logger(subsystem: "com.kirkouimet.sunday", category: "widget")
+    private static let logger = Logger(subsystem: "cooking.sunday.Sunday", category: "widget")
     private static var lastPublished: WidgetSnapshot?
 
     static func publish(store: MealStore) {

@@ -15,6 +15,6 @@ final class Connectivity: ObservableObject {
             let online = path.status == .satisfied
             Task { @MainActor in Connectivity.shared.isOnline = online }
         }
-        monitor.start(queue: DispatchQueue(label: "com.kirkouimet.sunday.connectivity"))
+        monitor.start(queue: DispatchQueue(label: "cooking.sunday.Sunday.connectivity"))
     }
 }
