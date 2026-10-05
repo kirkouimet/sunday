@@ -190,6 +190,9 @@ struct FeedView: View {
                         .padding(.horizontal)
                     }
                 }
+                // With no dinners the stack is empty and would collapse to no
+                // width, squeezing the empty state laid over it.
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 24)
             }
             // Room for the Live card's footer above the floating tab bar.
