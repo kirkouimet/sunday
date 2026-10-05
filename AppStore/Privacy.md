@@ -41,7 +41,7 @@ Photos are added through the system photo picker, which needs no permission.
 
 ---
 
-## Page: https://www.sunday.cooking/privacy
+## Page: https://www.sunday.cooking/legal/privacy-policy
 
 ```
 Privacy Policy
@@ -112,7 +112,7 @@ How do I delete everything?
 Go to Settings › your name › iCloud › Manage Account Storage › Sunday and delete the data.
 
 Privacy
-Sunday doesn't collect your information. Read the full policy at https://www.sunday.cooking/privacy
+Sunday doesn't collect your information. Read the full policy at https://www.sunday.cooking/legal/privacy-policy
 ```
 
 ## File: https://www.sunday.cooking/api/app.json

@@ -28,7 +28,7 @@ Spare subtitles, all within 30: `Snap it, name it, remember it` · `Dinner photo
 |---|---|
 | Support URL | `https://www.sunday.cooking/support` |
 | Marketing URL | `https://www.sunday.cooking` |
-| Privacy Policy URL | `https://www.sunday.cooking/privacy` |
+| Privacy Policy URL | `https://www.sunday.cooking/legal/privacy-policy` |
 | Contact email | `contact@sunday.cooking` |
 | Seller | Kirk Ouimet LLC (the App Store shows the legal entity name on the developer account; it currently reads "Kirk Ouimet", ask Apple Developer Support to match it to the D-U-N-S record if you want "LLC" shown) |
 

@@ -58,7 +58,7 @@ There are no purchases, ads, or external links to purchases.
 ## Before pressing Submit
 
 - [ ] Program License Agreement and Free Apps Agreement show Active.
-- [ ] `www.sunday.cooking/privacy`, `/support` and `/api/app.json` are live.
+- [ ] `www.sunday.cooking/legal/privacy-policy`, `/support` and `/api/app.json` are live.
 - [ ] CloudKit schema deployed to Production (CloudKit Console › `iCloud.cooking.sunday.Sunday` › Deploy Schema Changes), after one run with `SUNDAY_INIT_CLOUDKIT_SCHEMA=1`.
 - [ ] Family sharing tested with two Apple Accounts on two devices, on a TestFlight build.
 - [ ] iPhone 6.9" and iPad 13" screenshots uploaded (`AppStore/Screenshots/`).
