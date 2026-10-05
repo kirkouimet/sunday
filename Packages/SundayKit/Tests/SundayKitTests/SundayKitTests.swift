@@ -605,3 +605,37 @@ final class RecipeChunkingTests: XCTestCase {
         XCTAssertEqual(AvatarPalette.initial(for: "grandma June"), "G")
     }
 }
+
+final class AppSettingsTests: XCTestCase {
+    func testOlderBuildsMustUpdate() {
+        let settings = AppSettings(minimumVersion: "1.2")
+        XCTAssertTrue(settings.requiresUpdate(from: "1.1"))
+        XCTAssertTrue(settings.requiresUpdate(from: "1.1.9"))
+        XCTAssertTrue(settings.requiresUpdate(from: "0.9"))
+        XCTAssertFalse(settings.requiresUpdate(from: "1.2"))
+        XCTAssertFalse(settings.requiresUpdate(from: "1.2.0"))
+        XCTAssertFalse(settings.requiresUpdate(from: "1.10"))
+        XCTAssertFalse(settings.requiresUpdate(from: "2.0"))
+    }
+
+    func testComparesNumbersNotText() {
+        XCTAssertTrue(AppSettings(minimumVersion: "1.10").requiresUpdate(from: "1.9"))
+        XCTAssertTrue(AppSettings(minimumVersion: "1.2.1").requiresUpdate(from: "1.2"))
+    }
+
+    func testABrokenFileNeverLocksAnyoneOut() {
+        XCTAssertFalse(AppSettings().requiresUpdate(from: "1.0"))
+        XCTAssertFalse(AppSettings(minimumVersion: "").requiresUpdate(from: "1.0"))
+        XCTAssertFalse(AppSettings(minimumVersion: "soon").requiresUpdate(from: "1.0"))
+        XCTAssertFalse(AppSettings(minimumVersion: "2.0").requiresUpdate(from: "dev"))
+    }
+
+    func testDecodesWithFieldsMissing() throws {
+        let json = Data(#"{"minimumVersion":"1.3","updateURL":"https://sunday.cooking/update"}"#.utf8)
+        let settings = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertEqual(settings.minimumVersion, "1.3")
+        XCTAssertNil(settings.message)
+        XCTAssertEqual(settings.updateURL?.host, "sunday.cooking")
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8)), AppSettings())
+    }
+}

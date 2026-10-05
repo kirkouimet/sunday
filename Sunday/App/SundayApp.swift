@@ -8,6 +8,7 @@ struct SundayApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = MealStore.shared
     @StateObject private var router = AppRouter()
+    @StateObject private var updateGate = UpdateGate()
 
     init() {
         // Keepsake type: large titles ("Sunday", "What's for dinner?") in New York.
@@ -41,6 +42,9 @@ struct SundayApp: App {
                     guard let id = DeepLink.mealID(from: url), let meal = store.meal(withID: id) else { return }
                     router.show(meal)
                 }
+                .fullScreenCover(isPresented: .constant(updateGate.updateRequired)) {
+                    UpdateRequiredView(settings: updateGate.settings)
+                }
                 .tint(.sundayAccent)
                 .preferredColorScheme(UITestOptions.colorScheme)
         }
@@ -54,6 +58,7 @@ struct SundayApp: App {
             LiveDinners.sync(store: store)
             if store.needsMyName { router.askWhoIAm = true }
             WidgetPublisher.publish(store: store)
+            Task { await updateGate.refresh() }
             Task {
                 await store.refreshAccountStatus()
                 await Reminders.rescheduleIfEnabled(store: store)

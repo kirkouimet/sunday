@@ -26,6 +26,16 @@ Everything lives in iCloud through Core Data and `NSPersistentCloudKitContainer`
 
 Whoever taps **Family → Invite family** first becomes the owner. Their existing dinners move into the share, and invitees join through a standard iCloud link. Ratings point to a meal by UUID rather than a relationship, so they never ride along into the share.
 
+The one thing Sunday reads from a server is a small settings file, `https://sunday.cooking/app.json`, fetched on launch. It carries no dinners and sends nothing about the person or the phone. It exists so a build that has already shipped can still be told it is too old:
+
+```json
+{ "minimumVersion": "1.0", "message": "Optional line for the update screen.", "updateURL": "https://apps.apple.com/app/..." }
+```
+
+Every field is optional. A build older than `minimumVersion` shows "Time to update Sunday" and nothing else. With no file, or no connection, the app carries on. The last answer is remembered, so an old build stays stopped offline.
+
+Dinners, photos, ratings and members each carry `updatedAt`, set whenever a phone changes them (see `PersistenceController.stampChangesOnSave`), so a server could later tell which edit is newer.
+
 Suggestion and season logic lives in `Packages/SundayKit`. It's plain Swift with no Core Data, and it's unit tested.
 
 ## Getting started
