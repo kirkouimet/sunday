@@ -17,7 +17,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.updateURL = updateURL
     }
 
-    public static let url = URL(string: "https://sunday.cooking/app.json")!
+    public static let url = URL(string: "https://www.sunday.cooking/api/app.json")!
 
     /// True when `version` is older than the minimum. A missing or unreadable
     /// minimum never blocks: a broken file must not lock the family out.
