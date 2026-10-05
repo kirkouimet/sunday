@@ -29,6 +29,7 @@ final class PersistenceController {
     let isCloudBacked: Bool
 
     private let logger = Logger(subsystem: "cooking.sunday.Sunday", category: "persistence")
+    private var saveObserver: NSObjectProtocol?
 
     var ckContainer: CKContainer { CKContainer(identifier: Self.cloudKitContainerID) }
 
@@ -82,6 +83,7 @@ final class PersistenceController {
         if !inMemory {
             try? container.viewContext.setQueryGenerationFrom(.current)
         }
+        stampChangesOnSave()
 
         #if DEBUG
         // Pushes the schema to the CloudKit *development* environment once.
@@ -94,5 +96,28 @@ final class PersistenceController {
             }
         }
         #endif
+    }
+
+    /// Every record that carries `updatedAt` gets it set whenever this phone
+    /// changes the record, in the one place every save passes through. A
+    /// server needs it to tell which edit is newer and what changed since it
+    /// last looked. Only the view context is watched, so dinners arriving
+    /// from iCloud keep the time the phone that changed them gave them.
+    private func stampChangesOnSave() {
+        saveObserver = NotificationCenter.default.addObserver(
+            forName: .NSManagedObjectContextWillSave,
+            object: container.viewContext,
+            queue: nil
+        ) { notification in
+            guard let context = notification.object as? NSManagedObjectContext else { return }
+            let now = Date.now
+            for object in context.insertedObjects.union(context.updatedObjects)
+            where object.entity.attributesByName["updatedAt"] != nil {
+                // An object can be marked updated with nothing actually changed.
+                let changed = object.changedValues().keys.filter { $0 != "updatedAt" }
+                guard object.isInserted || (!changed.isEmpty && object.hasPersistentChangedValues) else { continue }
+                object.setValue(now, forKey: "updatedAt")
+            }
+        }
     }
 }

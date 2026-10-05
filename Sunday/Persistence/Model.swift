@@ -39,6 +39,8 @@ final class Meal: NSManagedObject, Identifiable {
     @NSManaged var liveBy: String?
     @NSManaged var liveEndedAt: Date?
     @NSManaged var createdAt: Date?
+    /// When this phone last changed the dinner (see `PersistenceController`).
+    @NSManaged var updatedAt: Date?
     @NSManaged var photos: NSSet?
     /// "I'm here" taps during Sunday Live, one record each, so phones
     /// checking in at the same moment never overwrite each other.
@@ -74,6 +76,7 @@ final class Photo: NSManagedObject, Identifiable {
     @NSManaged var thumbnailData: Data?
     @NSManaged var sortIndex: Int16
     @NSManaged var createdAt: Date?
+    @NSManaged var updatedAt: Date?
     /// Who took it (on Sunday Live, everyone's a photographer).
     @NSManaged var by: String?
     @NSManaged var meal: Meal?
@@ -118,6 +121,7 @@ final class Family: NSManagedObject, Identifiable {
     @NSManaged var id: UUID?
     @NSManaged var name: String?
     @NSManaged var createdAt: Date?
+    @NSManaged var updatedAt: Date?
 }
 
 enum SundayModel {
@@ -195,6 +199,7 @@ enum SundayModel {
             attribute("liveBy", .stringAttributeType),
             attribute("liveEndedAt", .dateAttributeType),
             attribute("createdAt", .dateAttributeType),
+            attribute("updatedAt", .dateAttributeType),
             mealPhotos,
             mealCheckIns,
         ])
@@ -205,6 +210,7 @@ enum SundayModel {
             attribute("thumbnailData", .binaryDataAttributeType, externalStorage: true),
             attribute("sortIndex", .integer16AttributeType, default: 0),
             attribute("createdAt", .dateAttributeType),
+            attribute("updatedAt", .dateAttributeType),
             attribute("by", .stringAttributeType),
             photoMeal,
         ])
@@ -234,6 +240,7 @@ enum SundayModel {
             attribute("id", .UUIDAttributeType),
             attribute("name", .stringAttributeType),
             attribute("createdAt", .dateAttributeType),
+            attribute("updatedAt", .dateAttributeType),
         ])
 
         mealPhotos.destinationEntity = photo
