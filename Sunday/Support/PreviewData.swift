@@ -32,8 +32,8 @@ enum PreviewData {
                symbol: "frying.pan.fill", colors: (.brown, .systemOrange)),
         Dinner(name: "Tacos", weeksAgo: 14, stars: 4, notes: "",
                symbol: "takeoutbag.and.cup.and.straw.fill", colors: (.systemYellow, .systemGreen)),
-        Dinner(name: "Chili", weeksAgo: 52, stars: 5, notes: "Perfect for the first cold Sunday.",
-               symbol: "flame.fill", colors: (.systemRed, .brown)),
+        Dinner(name: "Spaghetti & meatballs", weeksAgo: 52, stars: 5, notes: "Perfect for the first cold Sunday.",
+               symbol: "fork.knife", colors: (.systemRed, .brown)),
         Dinner(name: "Lemon chicken & roasted potatoes", weeksAgo: 60, stars: 4, notes: "",
                symbol: "fork.knife", colors: (.systemOrange, .systemYellow),
                recipe: "1 whole chicken, 2 lemons, 2 lb small potatoes, garlic, thyme.\n\nPotatoes in first at 425°F for 15 minutes. Chicken on top with lemon halves and garlic, 55 more minutes. Squeeze the roasted lemon over everything."),
@@ -52,7 +52,7 @@ enum PreviewData {
         "Salmon with rice": ("salmon", "Salmon with rice and lemon on a plate."),
         "Pot roast": ("pot-roast", "Pot roast with green beans and mashed potatoes."),
         "Tacos": ("tacos", "Three tacos with meat, onion and cilantro."),
-        "Chili": ("chili", "A bowl of chili topped with shredded cheese."),
+        "Spaghetti & meatballs": ("spaghetti", "Spaghetti and meatballs with grated cheese."),
         "Thanksgiving turkey": ("turkey", "A roast turkey in the pan."),
         "Birthday lasagna": ("lasagna", "A slice of lasagna with melted cheese."),
     ]
@@ -112,13 +112,13 @@ enum PreviewData {
         try? context.save()
     }
 
-    /// Sunday Live in progress, for screenshots: Dad's chili, two photos so
+    /// Sunday Live in progress, for screenshots: Dad's spaghetti, two photos so
     /// far, and this phone (Grandma June's) not checked in yet.
     private static func addLiveDinner(_ context: NSManagedObjectContext) {
         let started = Date.now.addingTimeInterval(-25 * 60)
         let meal = Meal(context: context)
         meal.id = UUID()
-        meal.name = "Chili"
+        meal.name = "Spaghetti & meatballs"
         meal.date = started
         meal.createdAt = started
         meal.cook = "Dad"
@@ -132,8 +132,8 @@ enum PreviewData {
             photo.sortIndex = Int16(index)
             photo.by = index == 0 ? "Dad" : "Ellie"
             photo.createdAt = started.addingTimeInterval(Double(index) * 600)
-            photo.imageData = (samplePhoto(for: "Chili", index: index)
-                ?? illustration(symbol: "flame.fill", colors: (.systemRed, .brown), variant: index))
+            photo.imageData = (samplePhoto(for: "Spaghetti & meatballs", index: 0)
+                ?? illustration(symbol: "fork.knife", colors: (.systemRed, .brown), variant: index))
                 .jpegData(compressionQuality: 0.8)
             photo.thumbnailData = photo.imageData
             photo.meal = meal

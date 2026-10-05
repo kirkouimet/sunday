@@ -13,7 +13,6 @@ Stand-in dinners for App Store screenshots (see `Screenshots.md`). Every photo i
 | `salmon-1.jpg` | Public domain | [Soldiers, civilians cook off in Baghdad 'Iron Chef' competition DVIDS246096.jpg](https://commons.wikimedia.org/wiki/File:Soldiers,_civilians_cook_off_in_Baghdad_%27Iron_Chef%27_competition_DVIDS246096.jpg) |
 | `pot-roast-1.jpg` | CC0 | [Pot roast, green beans, and mashed potatoes - Massachusetts.jpg](https://commons.wikimedia.org/wiki/File:Pot_roast,_green_beans,_and_mashed_potatoes_-_Massachusetts.jpg) |
 | `tacos-1.jpg` | Public domain | [Tacos on a plate.jpg](https://commons.wikimedia.org/wiki/File:Tacos_on_a_plate.jpg) |
-| `chili-1.jpg` | CC0 | [Chili con carne and cheddar cheese - Arlington, MA.jpg](https://commons.wikimedia.org/wiki/File:Chili_con_carne_and_cheddar_cheese_-_Arlington,_MA.jpg) |
-| `chili-2.jpg` | CC0 | [Chili con carne cuisson.jpg](https://commons.wikimedia.org/wiki/File:Chili_con_carne_cuisson.jpg) |
 | `turkey-1.jpg` | CC0 | [Roasted turkey.jpg](https://commons.wikimedia.org/wiki/File:Roasted_turkey.jpg) |
 | `lasagna-1.jpg` | CC0 | [Lasagna Serving.jpg](https://commons.wikimedia.org/wiki/File:Lasagna_Serving.jpg) |
+| `spaghetti-1.jpg` | CC0 | [Luna Trattoria - January 2025 - Sarah Stierch 04.jpg](https://commons.wikimedia.org/wiki/File:Luna_Trattoria_-_January_2025_-_Sarah_Stierch_04.jpg) |

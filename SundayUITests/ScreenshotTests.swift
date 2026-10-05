@@ -100,7 +100,7 @@ final class ScreenshotTests: XCTestCase {
         live.launchEnvironment["SUNDAY_SAMPLE_PHOTOS"] = photos
         live.launch()
         if live.otherElements["liveCard"].firstMatch.waitForExistence(timeout: 15)
-            || live.staticTexts["Chili"].firstMatch.waitForExistence(timeout: 3) {
+            || live.staticTexts["Spaghetti & meatballs"].firstMatch.waitForExistence(timeout: 3) {
             sleep(1)
             snap("9-live", variant)
         } else {
