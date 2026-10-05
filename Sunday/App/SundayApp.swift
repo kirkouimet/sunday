@@ -56,6 +56,7 @@ struct SundayApp: App {
             store.applyPendingCheckIns()
             store.reconcile()
             LiveDinners.sync(store: store)
+            store.describeWaitingDinners()
             if store.needsMyName { router.askWhoIAm = true }
             WidgetPublisher.publish(store: store)
             Task { await updateGate.refresh() }

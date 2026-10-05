@@ -107,6 +107,11 @@ final class MealStore: ObservableObject {
     private var reconcileTask: Task<Void, Never>?
     private var sharingInFlight = Set<NSManagedObjectID>()
     private var sharedImportFallback: Task<Void, Never>?
+    private var describeTask: Task<Void, Never>?
+    /// A dinner was saved while a batch was running: look again after it.
+    private var describeAgain = false
+    /// Dinners whose photo the model looked at and found no food in.
+    private static let notFoodKey = "describedNotFoodMealIDs"
 
     init(persistence: PersistenceController) {
         self.persistence = persistence
@@ -214,6 +219,7 @@ final class MealStore: ObservableObject {
             if isNew || draft.photos.allSatisfy({ $0.existing == nil }) { checkMilestone() }
         }
         if let photoToTag { tagInBackground(meal.objectID, photo: photoToTag) }
+        describeWaitingDinners()
         WidgetPublisher.publish(store: self)
 
         // Placing the meal in the family zone is a network round trip; don't
@@ -575,6 +581,54 @@ final class MealStore: ObservableObject {
             else { return }
             meal.tags = FoodTags.encode(tags)
             saveQuietly()
+        }
+    }
+
+    /// Writes the one-line caption for dinners that have a photo but no
+    /// caption yet: tonight's, and every older one posted before a phone in
+    /// the family could look at photos. Newest first, a batch per visit, one
+    /// at a time so the phone stays cool.
+    func describeWaitingDinners() {
+        guard !PersistenceController.isUITesting, MealDescriber.isAvailable else { return }
+        guard describeTask == nil else {
+            describeAgain = true
+            return
+        }
+        describeTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                describeTask = nil
+                if describeAgain, !Task.isCancelled {
+                    describeAgain = false
+                    describeWaitingDinners()
+                }
+            }
+            var notFood = Set(UserDefaults.standard.stringArray(forKey: Self.notFoodKey) ?? [])
+            let request = NSFetchRequest<Meal>(entityName: "Meal")
+            request.sortDescriptors = [NSSortDescriptor(keyPath: \Meal.date, ascending: false)]
+            let waiting = ((try? context.fetch(request)) ?? []).filter { meal in
+                guard let id = meal.id, !meal.isPlan, (meal.caption ?? "").isEmpty else { return false }
+                return !notFood.contains(id.uuidString) && !meal.sortedPhotos.isEmpty && canEdit(meal)
+            }
+            for objectID in waiting.prefix(25).map(\.objectID) {
+                guard !Task.isCancelled else { return }
+                // A photo still downloading from iCloud waits for the next visit.
+                guard let meal = try? context.existingObject(with: objectID) as? Meal, !meal.isGone,
+                      let id = meal.id, let photo = meal.sortedPhotos.first?.imageData
+                else { continue }
+                switch await MealDescriber.describe(jpeg: photo) {
+                case .described(let description):
+                    // Someone else's phone may have got there while this one looked.
+                    guard !meal.isGone, (meal.caption ?? "").isEmpty, !description.caption.isEmpty else { continue }
+                    meal.caption = description.caption
+                    saveQuietly()
+                case .notFood:
+                    notFood.insert(id.uuidString)
+                    UserDefaults.standard.set(Array(notFood), forKey: Self.notFoodKey)
+                case .failed:
+                    continue
+                }
+            }
         }
     }
 

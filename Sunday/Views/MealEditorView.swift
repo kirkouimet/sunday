@@ -31,6 +31,8 @@ struct MealEditorView: View {
     @State private var dismissedSameDayPrompt = false
     @State private var isTypingNewCook = false
     @State private var newGuest = ""
+    /// What the first new photo looks like, offered as a name.
+    @State private var seenName: String?
     @FocusState private var focusedField: Field?
 
     private enum Field { case name, cook, notes }
@@ -67,7 +69,20 @@ struct MealEditorView: View {
 
     private var nameSuggestions: [String] {
         guard focusedField == .name else { return [] }
-        return Suggestions(meals: otherMeals).nameSuggestions(for: draft.name)
+        let known = Suggestions(meals: otherMeals).nameSuggestions(for: draft.name)
+        // What the photo looks like comes first, until you type something else.
+        let typed = draft.name.trimmingCharacters(in: .whitespaces)
+        guard let seenName, seenName.lowercased().hasPrefix(typed.lowercased()),
+              seenName.caseInsensitiveCompare(typed) != .orderedSame,
+              !known.contains(where: { $0.caseInsensitiveCompare(seenName) == .orderedSame })
+        else { return known }
+        return [seenName] + known
+    }
+
+    /// The photo to name the dinner from: the first one you just added, or,
+    /// for a saved dinner nobody named, the one it already has.
+    private var photoToName: MealDraft.DraftPhoto? {
+        draft.photos.first { $0.existing == nil } ?? (draft.original?.name.isEmpty == true ? draft.photos.first : nil)
     }
 
     private var previousTimes: Dish? {
@@ -141,6 +156,13 @@ struct MealEditorView: View {
                 Button("OK") {}
             } message: {
                 Text(errorMessage ?? "")
+            }
+            .task(id: photoToName?.id) {
+                seenName = nil
+                guard let image = photoToName?.image, MealDescriber.isAvailable else { return }
+                if case .described(let description) = await MealDescriber.describe(image), !Task.isCancelled {
+                    seenName = description.name
+                }
             }
             .onAppear(perform: loadDraft)
             .interactiveDismissDisabled(isSaving || hasChanges)

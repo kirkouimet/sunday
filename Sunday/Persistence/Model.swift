@@ -14,6 +14,9 @@ final class Meal: NSManagedObject, Identifiable {
     @NSManaged var notes: String?
     /// On-device food tags from the first photo, e.g. "pasta,salad".
     @NSManaged var tags: String?
+    /// One line saying what the first photo shows, written on device by
+    /// whichever family phone can (see `MealDescriber`).
+    @NSManaged var caption: String?
     /// Who was at the table: "Mom,Dad,Grandma June".
     @NSManaged var attendees: String?
     /// The family's own way of making this dish, if someone wrote it down.
@@ -186,6 +189,7 @@ enum SundayModel {
             attribute("cook", .stringAttributeType),
             attribute("notes", .stringAttributeType),
             attribute("tags", .stringAttributeType),
+            attribute("caption", .stringAttributeType),
             attribute("attendees", .stringAttributeType),
             attribute("recipe", .stringAttributeType),
             attribute("isPlan", .booleanAttributeType, default: false),

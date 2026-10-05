@@ -639,3 +639,28 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8)), AppSettings())
     }
 }
+
+final class MealDescriptionTests: XCTestCase {
+    func testTidiesTheModelsHabits() {
+        let description = MealDescription.cleaned(name: " \"Spaghetti with Meat Sauce.\" ",
+                                                  caption: "Spaghetti with meat sauce and cheese", isFood: true)
+        XCTAssertEqual(description, MealDescription(name: "Spaghetti with meat sauce",
+                                                    caption: "Spaghetti with meat sauce and cheese."))
+    }
+
+    func testKeepsCapitalsThatAreMeant() {
+        XCTAssertEqual(MealDescription.sentenceCased("BBQ Ribs and Corn"), "BBQ ribs and corn")
+        XCTAssertEqual(MealDescription.sentenceCased("lasagna"), "Lasagna")
+    }
+
+    func testNotFoodIsNothing() {
+        XCTAssertNil(MealDescription.cleaned(name: "", caption: "A dog is standing in a grassy area.", isFood: true))
+        XCTAssertNil(MealDescription.cleaned(name: "Dog", caption: "A dog on grass.", isFood: false))
+        XCTAssertNil(MealDescription.cleaned(name: String(repeating: "very ", count: 20), caption: "", isFood: true))
+    }
+
+    func testARamblingCaptionIsDroppedButTheNameKept() {
+        let description = MealDescription.cleaned(name: "Tacos", caption: String(repeating: "word ", count: 60), isFood: true)
+        XCTAssertEqual(description, MealDescription(name: "Tacos", caption: ""))
+    }
+}

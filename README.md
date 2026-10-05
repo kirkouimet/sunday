@@ -12,6 +12,7 @@ A private iPhone app for the family's Sunday dinners. Snap a picture, name the d
 - **What's for dinner?** Favorites you haven't had in a while, this time in past years, good for the season, upcoming holidays ("🦃 Thanksgiving is coming. Here's what we made before"), and Surprise me.
 - **Memories.** An "A year ago this week" card, a Sunday streak, holiday badges, and milestone celebrations.
 - **Food tags.** Apple's on-device Vision tags the first photo ("pasta", "soup"). Nothing leaves the phone.
+- **It knows what's for dinner.** On iOS 27 with Apple Intelligence, the on-device model looks at the photo, offers a name while you type ("Lasagna") and writes one line for the dinner's page and for search. Older dinners get their line too, a batch each time the app opens. Nothing leaves the phone, and names are only ever offered, never filled in for you.
 - **Notifications.** A Sunday reminder (with a memory), plus "📸 New dinner posted" when someone in the family posts.
 - **Widget.** Small and medium widgets with last Sunday's dinner, "a year ago this week", and the streak.
 
@@ -26,7 +27,7 @@ Everything lives in iCloud through Core Data and `NSPersistentCloudKitContainer`
 
 Whoever taps **Family → Invite family** first becomes the owner. Their existing dinners move into the share, and invitees join through a standard iCloud link. Ratings point to a meal by UUID rather than a relationship, so they never ride along into the share.
 
-The one thing Sunday reads from a server is a small settings file, `https://sunday.cooking/app.json`, fetched on launch. It carries no dinners and sends nothing about the person or the phone. It exists so a build that has already shipped can still be told it is too old:
+The one thing Sunday reads from a server is a small settings file, `https://www.sunday.cooking/api/app.json`, fetched on launch. It carries no dinners and sends nothing about the person or the phone. It exists so a build that has already shipped can still be told it is too old:
 
 ```json
 { "minimumVersion": "1.0", "message": "Optional line for the update screen.", "updateURL": "https://apps.apple.com/app/..." }

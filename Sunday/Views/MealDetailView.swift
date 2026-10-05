@@ -152,6 +152,12 @@ struct MealDetailView: View {
                     }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    // What the photo shows, in a line.
+                    if let caption = meal.caption, !caption.isEmpty {
+                        Text(caption)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.horizontal)
 
